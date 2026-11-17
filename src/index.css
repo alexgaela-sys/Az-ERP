@@ -1,0 +1,416 @@
+@import "tailwindcss";
+
+/* ============================================================
+   SNAKDIP ERP — Brand Design System
+   Derived from snakdip.com: warm red-orange brand accents on a
+   clean cream base, playful but enterprise-grade, Arabic-first.
+   ============================================================ */
+
+@theme {
+  /* Typography */
+  --font-sans: "Cairo", "Tajawal", ui-sans-serif, system-ui, sans-serif;
+
+  /* SnakDip brand accent (tomato red-orange) */
+  --color-brand-50: #fff3f0;
+  --color-brand-100: #ffe1d9;
+  --color-brand-200: #ffc3b4;
+  --color-brand-300: #ff9d86;
+  --color-brand-400: #ff6f4f;
+  --color-brand-500: #fa4a1f;
+  --color-brand-600: #eb320e;
+  --color-brand-700: #c62509;
+  --color-brand-800: #9d200e;
+  --color-brand-900: #7e1f10;
+  --color-brand-950: #440b04;
+
+  /* SnakDip warm neutrals (cream paper, cocoa ink) */
+  --color-cream-50: #fffdf9;
+  --color-cream-100: #fdf8ef;
+  --color-cream-200: #f7ecd9;
+  --color-cream-300: #eddbbd;
+  --color-cream-400: #dfc496;
+  --color-cream-500: #d1ab6e;
+  --color-cream-600: #b78a4e;
+  --color-cream-700: #966b3f;
+  --color-cream-800: #7a5836;
+  --color-cream-900: #63482f;
+  --color-cream-950: #362416;
+
+  /* Dark sidebar ink (deep warm charcoal) */
+  --color-ink-700: #33302e;
+  --color-ink-800: #262422;
+  --color-ink-900: #1c1a19;
+  --color-ink-950: #131211;
+
+  /* Legacy palette remap: existing modules use slate/amber classes;
+     re-point them at the SnakDip palette for instant, consistent re-skin
+     without touching any module markup or logic. */
+  --color-slate-50: #fdf8ef;
+  --color-slate-100: #f7ecd9;
+  --color-slate-200: #eddbbd;
+  --color-slate-300: #dfc496;
+  --color-slate-400: #b39b7d;
+  --color-slate-500: #9c8467;
+  --color-slate-600: #85705a;
+  --color-slate-700: #6f5c48;
+  --color-slate-800: #262422;
+  --color-slate-900: #1c1a19;
+  --color-slate-950: #131211;
+
+  --color-amber-50: #fff3f0;
+  --color-amber-100: #ffe1d9;
+  --color-amber-200: #ffc3b4;
+  --color-amber-300: #ff9d86;
+  --color-amber-400: #ff6f4f;
+  --color-amber-500: #fa4a1f;
+  --color-amber-600: #eb320e;
+  --color-amber-700: #c62509;
+  --color-amber-800: #9d200e;
+  --color-amber-900: #7e1f10;
+  --color-amber-950: #440b04;
+
+  /* Brand shadow */
+  --shadow-brand: 0 8px 24px -8px rgba(250, 74, 31, 0.35);
+  --shadow-card: 0 1px 2px rgba(54, 36, 22, 0.05), 0 4px 16px -6px rgba(54, 36, 22, 0.08);
+
+  /* Animations */
+  --animate-fade-in: fade-in 0.25s ease-out both;
+  --animate-scale-in: scale-in 0.16s ease-out both;
+  --animate-shake: shake 0.3s ease-in-out;
+  --animate-slide-up: slide-up 0.3s ease-out both;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* Number inputs keep Latin digits aligned even in RTL documents */
+input[type="number"] {
+  direction: ltr;
+  text-align: left;
+}
+
+/* ============================================================
+   Mobile / PWA hardening (presentation only — no logic changes)
+   ============================================================ */
+
+/* Clip horizontal overflow without creating a scroll container,
+   so position: sticky headers keep working (unlike overflow-x: hidden). */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Modals: the card is the direct child of a fixed fullscreen overlay.
+   Cap it to the viewport and scroll internally so it can never extend
+   outside the screen on small devices. Desktop is unaffected because
+   modal content is shorter than the cap. */
+div.fixed.inset-0.z-50 > div {
+  max-height: min(92vh, 100dvh - 1.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Touch-friendly targets on coarse pointers (phones/tablets) */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 42px;
+  }
+  .field-input {
+    min-height: 44px;
+  }
+  .nav-item {
+    min-height: 42px;
+  }
+  .tab-item {
+    min-height: 40px;
+  }
+}
+
+/* Small screens: tables scroll inside themselves instead of stretching
+   the page. display:block + overflow-x keeps columns readable via
+   nowrap and preserves row/striping rendering in Chromium/Android. */
+@media (max-width: 640px) {
+  main table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+  /* Comfortable base size for Arabic on small screens */
+  body {
+    font-size: 15px;
+  }
+}
+
+/* Global focus ring in brand color */
+*:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+@layer components {
+  /* ---------- Page header ---------- */
+  .page-title {
+    @apply text-lg sm:text-xl font-black text-ink-900 tracking-tight;
+  }
+  .page-subtitle {
+    @apply text-xs text-cream-700 font-medium mt-0.5;
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold
+      transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer whitespace-nowrap;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold
+      transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer whitespace-nowrap
+      bg-brand-500 text-white shadow-brand hover:bg-brand-600;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold
+      transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer whitespace-nowrap
+      bg-white text-ink-800 border border-cream-300 hover:bg-cream-100 hover:border-cream-400;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold
+      transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer whitespace-nowrap
+      bg-transparent text-ink-700 hover:bg-cream-200/60;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold
+      transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer whitespace-nowrap
+      bg-rose-600 text-white hover:bg-rose-700;
+  }
+  .btn-dark {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold
+      transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer whitespace-nowrap
+      bg-ink-900 text-white hover:bg-ink-800;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs rounded-lg;
+  }
+
+  /* ---------- Cards ---------- */
+  .card {
+    @apply bg-white rounded-2xl border border-cream-200 shadow-card;
+  }
+
+  /* ---------- Inputs ---------- */
+  .field-label {
+    @apply block text-xs font-bold text-ink-800 mb-1.5;
+  }
+  .field-input {
+    @apply w-full px-3.5 py-2.5 rounded-xl bg-white border border-cream-300 text-sm text-ink-900
+      placeholder:text-cream-500 placeholder:font-normal transition-colors
+      focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 disabled:bg-cream-100 disabled:text-cream-600;
+  }
+  select.field-input {
+    @apply cursor-pointer;
+  }
+
+  /* ---------- Status badges (design tokens for the whole app) ---------- */
+  .badge,
+  .badge-success,
+  .badge-warning,
+  .badge-error,
+  .badge-pending,
+  .badge-draft,
+  .badge-brand,
+  .badge-purple,
+  .badge-cream {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border whitespace-nowrap;
+  }
+  .badge-success { @apply bg-emerald-50 text-emerald-800 border-emerald-200; }
+  .badge-warning { @apply bg-amber-50 text-amber-800 border-amber-200; }
+  .badge-error { @apply bg-rose-50 text-rose-800 border-rose-200; }
+  .badge-pending { @apply bg-sky-50 text-sky-800 border-sky-200; }
+  .badge-draft { @apply bg-slate-100 text-slate-700 border-slate-200; }
+  .badge-brand { @apply bg-brand-50 text-brand-800 border-brand-200; }
+  .badge-purple { @apply bg-violet-50 text-violet-800 border-violet-200; }
+  .badge-cream { @apply bg-cream-100 text-cream-800 border-cream-300; }
+
+  /* ---------- Tables ---------- */
+  .data-table {
+    @apply w-full text-sm border-collapse;
+  }
+  .data-table thead th {
+    @apply text-right text-[11px] font-black text-cream-800 uppercase tracking-wide
+      bg-cream-100/80 px-3.5 py-3 border-b border-cream-300 whitespace-nowrap;
+  }
+  .data-table tbody td {
+    @apply px-3.5 py-3 border-b border-cream-100 text-ink-800 align-middle;
+  }
+  .data-table tbody tr {
+    @apply transition-colors hover:bg-brand-50/40;
+  }
+  .table-toolbar {
+    @apply flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 border-b border-cream-200;
+  }
+
+  /* ---------- KPI cards ---------- */
+  .kpi-card {
+    @apply bg-white rounded-2xl border border-cream-200 shadow-card p-4 transition-all duration-200 hover:shadow-brand/20 hover:-translate-y-0.5 cursor-pointer;
+  }
+  .kpi-label {
+    @apply text-[11px] font-bold text-cream-700;
+  }
+  .kpi-value {
+    @apply text-lg sm:text-xl font-black text-ink-900 font-mono tabular-nums leading-tight mt-1.5;
+  }
+  .kpi-hint {
+    @apply text-[10px] text-cream-600 mt-1 font-medium;
+  }
+
+  /* ---------- Tabs ---------- */
+  .tab-bar {
+    @apply flex gap-1 p-1 rounded-2xl bg-cream-100 border border-cream-200 overflow-x-auto;
+  }
+  .tab-item {
+    @apply flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-cream-700
+      transition-all whitespace-nowrap cursor-pointer hover:bg-white/70;
+  }
+  .tab-item-active {
+    @apply bg-white text-brand-700 shadow-sm;
+  }
+
+  /* ---------- Sidebar nav item ---------- */
+  .nav-item {
+    @apply w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-semibold text-cream-300
+      transition-all text-right cursor-pointer hover:bg-white/5 hover:text-white;
+  }
+  .nav-item-active {
+    @apply bg-brand-500 !text-white font-bold shadow-brand hover:bg-brand-500 hover:!text-white;
+  }
+}
+
+/* ============================================================
+   PRINT MODE (F19 — dedicated invoice & report print templates)
+
+   `printDocument()` adds the `print-only-doc` class to <body> for the
+   duration of the print job. While it is present, EVERYTHING outside a
+   `.print-area` container is hidden — sidebar, header, buttons, modals
+   and any unrelated page content — and the single `.print-area` (invoice,
+   report, customer statement, item card) is expanded to the full page.
+   ============================================================ */
+@media print {
+  /* margin 0 makes the browser drop its own header/footer (page title + URL);
+     the 12mm page margin is re-created as padding on .print-area below. */
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  body {
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* The printable document body lives inside its own overlay on screen; it is
+     always visible there as a preview and only reaches the printer through
+     .print-area below. */
+
+  /* Nothing is printable until printDocument() scopes it to a .print-area. */
+  body.print-only-doc > * {
+    visibility: hidden !important;
+  }
+  body.print-only-doc .print-area,
+  body.print-only-doc .print-area * {
+    visibility: visible !important;
+  }
+
+  /* Hide the application shell inside any document as a second safety net. */
+  .print-area .app-shell,
+  .print-area .sidebar,
+  .print-area .header,
+  .print-area .modal,
+  .print-area .print-hidden,
+  .print-area button {
+    display: none !important;
+  }
+
+  /* The print container takes the full page for a clean document. */
+  .print-area {
+    position: absolute !important;
+    inset-inline-start: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    overflow: visible !important;
+    padding: 12mm !important;
+    box-sizing: border-box !important;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    margin: 0 !important;
+    max-height: none !important;
+    max-width: none !important;
+    background: #fff !important;
+  }
+
+  .print-area .print-only {
+    display: block !important;
+  }
+
+  /* When the print job is scoped, only the FIRST .print-area is the document
+     (a page never contains two print areas in practice). */
+  body.print-only-doc .print-area ~ .print-area {
+    display: none !important;
+  }
+
+  /* Keep the document readable in black on white. */
+  .print-area,
+  .print-area * {
+    color: #000 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* An administrator-designed invoice keeps its own colors in print instead of
+     the blanket black rule above. The template sets --invoice-text/--invoice-accent
+     on .invoice-tpl (inline styles would otherwise lose to !important). */
+  .print-area .invoice-tpl {
+    color: var(--invoice-text, #000) !important;
+  }
+  .print-area .invoice-tpl * {
+    color: inherit !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .print-area .invoice-tpl .invoice-keep-color {
+    color: var(--invoice-accent, #000) !important;
+  }
+
+  /* Avoid blank pages / page-breaks inside the document. */
+  .print-area table,
+  .print-area .print-doc {
+    page-break-inside: avoid;
+  }
+  .print-area thead {
+    display: table-header-group;
+  }
+}
+
+/* Always-hide the print-only wrapper when not in print mode is handled by
+   the component itself via the print:hidden class. */
+.print-hidden {
+  display: none !important;
+}
+
+
+/* People without the "prices" permission: money values are tagged data-price in the screens. */
+html[data-hide-prices="true"] [data-price] { display: none !important; }

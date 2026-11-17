@@ -1,0 +1,333 @@
+// F19 — DEDICATED printable invoice template (browser print / "Save as PDF").
+//
+// This is a real document layout, NOT a dump of the application page:
+//   company name / info / tax number · invoice number · date · customer +
+//   customer tax number · sales channel · warehouse or stock source · items ·
+//   quantity · unit · unit price · BONUS (بونص مجاني, zero price) · discount ·
+//   VAT · subtotal · total · currency (EGP / USD).
+//
+// Only the `.print-area` below reaches the printer (see printDocument() and the
+// @media print block in src/index.css) — the sidebar, header and every button in
+// the application are hidden.
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { erpDb } from '../../services/db';
+import { CompanySettingsService } from '../../services/companySettings';
+import { printDocument } from '../printUtils';
+import { InvoiceFooter, InvoiceHeader, InvoiceDocStyle, NetDueHighlight } from '../invoiceTemplate';
+import { WithholdingSummary } from '../withholdingSummary';
+import { SalesInvoice, SalesInvoiceLine, PurchaseInvoice, PurchaseInvoiceLine } from '../../types/erp';
+import { Printer, X } from 'lucide-react';
+
+const CHANNEL_AR: Record<string, string> = {
+  retail: 'تجزئة', wholesale: 'جملة', export: 'تصدير',
+};
+const PAYMENT_AR: Record<string, string> = {
+  cash: 'نقدي', credit: 'آجل', bank_transfer: 'تحويل بنكي', cheque: 'شيك',
+};
+
+const InvoicePrint: React.FC<{
+  invoiceId?: string;
+  /** For a purchase invoice, the related purchase doc id. Optional; if absent we
+   *  search sales invoices. Used to disambiguate the print target. */
+  purchaseInvoiceId?: string;
+  onClose: () => void;
+}> = ({ invoiceId, purchaseInvoiceId, onClose }) => {
+  const db = erpDb.getSnapshot();
+  // Saved invoice design (header/footer/logo/visible fields/fonts/colors).
+  const template = CompanySettingsService.getInvoiceTemplate();
+
+  // F19 — print action owned by the preview itself.
+  const [printHint, setPrintHint] = useState<string | null>(null);
+  const hintTimer = useRef<number | null>(null);
+  const didAutoPrint = useRef(false);
+
+  const clearHintTimer = () => {
+    if (hintTimer.current !== null) {
+      window.clearTimeout(hintTimer.current);
+      hintTimer.current = null;
+    }
+  };
+
+  const runPrint = () => {
+    setPrintHint(null);
+    clearHintTimer();
+    const ok = printDocument();
+    if (!ok) {
+      setPrintHint('تعذّر فتح نافذة الطباعة في هذا المتصفح. اضغط الزر مرة أخرى، أو افتح التطبيق في تبويب متصفح كامل ثم أعد الطباعة.');
+      return;
+    }
+    // The dialog is modal in some engines and asynchronous in others. If the
+    // page still owns focus a moment later, nothing opened — say so instead of
+    // leaving a silent no-op. The hint never removes the print scoping.
+    hintTimer.current = window.setTimeout(() => {
+      if (document.body.classList.contains('print-only-doc') && document.hasFocus()) {
+        setPrintHint('لم تُفتح نافذة الطباعة تلقائيًا — اضغط "طباعة / حفظ PDF" مرة أخرى. إذا كنت داخل إطار معاينة مضمّن، افتح التطبيق في تبويب كامل.');
+      }
+    }, 2000);
+  };
+
+  useEffect(() => {
+    const clear = () => { setPrintHint(null); clearHintTimer(); };
+    window.addEventListener('afterprint', clear);
+    return () => { window.removeEventListener('afterprint', clear); clearHintTimer(); };
+  }, []);
+
+  // ITEM 16 — the print preview can always be dismissed with Escape (the X
+  // button in the chrome already covers the pointer path).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  // A) "طباعة الفاتورة" opens the browser print dialog directly; the preview
+  // stays underneath so the user can cancel and retry. The ref guard keeps
+  // React StrictMode's double effect from opening the dialog twice.
+  useLayoutEffect(() => {
+    if (didAutoPrint.current) return;
+    didAutoPrint.current = true;
+    runPrint();
+  }, []);
+
+  const sales = db.salesInvoices.find((i) => i.id === invoiceId) || null;
+  const purchase = purchaseInvoiceId
+    ? db.purchaseInvoices.find((p) => p.id === purchaseInvoiceId) || null
+    : null;
+  const isPurchase = !sales && Boolean(purchase);
+  const inv = (sales || purchase) as SalesInvoice | PurchaseInvoice | null;
+
+  // Screen: a full-screen preview overlay. Print: only `.print-area` survives.
+  const wrap = (children: React.ReactNode) => (
+    <div className="print-area fixed inset-0 z-[60] overflow-y-auto bg-slate-100 p-4">
+      {/* ---------- SCREEN CHROME (never printed) ----------
+          Kept ABOVE the document so the print action is always visible instead
+          of sitting below a long invoice, out of sight. ---------- */}
+      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 bg-slate-900 text-slate-100 px-4 py-2 text-xs print:hidden">
+        <span className="flex items-center gap-2 font-bold">
+          <Printer className="w-4 h-4" />
+          {isPurchase ? 'فاتورة مشتريات — معاينة الطباعة' : 'فاتورة مبيعات — معاينة الطباعة'}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={runPrint}
+            className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs"
+          >
+            طباعة / حفظ PDF
+          </button>
+          <button
+            onClick={onClose}
+            className="px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold inline-flex items-center gap-1"
+          >
+            <X className="w-3 h-3" /> إغلاق
+          </button>
+        </div>
+      </div>
+      {printHint && (
+        <div className="mt-2 rounded-lg bg-amber-100 border border-amber-300 px-3 py-2 text-[11px] font-bold text-amber-900 print:hidden">
+          {printHint}
+        </div>
+      )}
+
+      {/* ---------- DOCUMENT ---------- */}
+      <div
+        className="print-doc invoice-tpl max-w-3xl mx-auto bg-white p-6 shadow-xl border border-slate-200"
+        style={InvoiceDocStyle(template)}
+        dir="rtl"
+      >
+        <InvoiceHeader company={db.company} template={template} />
+
+        <div
+          className="flex justify-between items-end py-3 border-b"
+          style={{ borderColor: template.accentColor }}
+        >
+          <div className="text-lg font-black">
+            {isPurchase ? 'فاتورة مشتريات' : 'فاتورة مبيعات'}
+            {sales?.channel ? ` — ${CHANNEL_AR[sales.channel] || ''}` : ''}
+          </div>
+          <div className="text-sm font-bold">
+            رقم المستند: {sales?.invoiceNumber || (purchase as PurchaseInvoice)?.invoiceNumber || '—'}
+          </div>
+        </div>
+
+        {children}
+
+        <InvoiceFooter company={db.company} template={template} />
+      </div>
+
+    </div>
+  );
+
+  if (!inv) {
+    return wrap(<div className="py-10 text-center">لا توجد فاتورة لطباعتها</div>);
+  }
+
+  const fmt = (v: number) => (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  if (isPurchase && purchase) {
+    const pLines = db.purchaseInvoiceLines.filter(l => l.purchaseInvoiceId === purchase.id);
+    const supplier = db.suppliers.find(s => s.id === purchase.supplierId);
+    return wrap(
+      <>
+        <div className="grid grid-cols-2 gap-2 text-xs py-2">
+          <div>المورد: <b>{supplier?.name || '—'}</b></div>
+          <div>التاريخ: <b>{purchase.date}</b></div>
+          <div>الرقم الضريبي للمورد: {supplier?.taxNumber || '—'}</div>
+          <div>المستودع: {db.warehouses.find(w => w.id === purchase.warehouseId)?.nameAr || purchase.warehouseId}</div>
+          <div>طريقة الدفع: {PAYMENT_AR[purchase.paymentMethod] || purchase.paymentMethod}</div>
+          <div>العملة: {purchase.currency}</div>
+        </div>
+        <table className="w-full border-collapse" style={{ fontSize: template.tableFontSize }}>
+          <thead>
+            <tr className="border-b-2" style={{ borderColor: template.accentColor }}>
+              <th className="py-1.5 text-right">الصنف</th>
+              <th className="py-1.5 text-center">الكمية</th>
+              <th className="py-1.5 text-center">الوحدة</th>
+              <th className="py-1.5 text-right">سعر الوحدة</th>
+              <th className="py-1.5 text-right">الإجمالي</th>
+              <th className="py-1.5 text-right">الخصم %</th>
+              <th className="py-1.5 text-right">ضريبة %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pLines.map(l => (
+              <tr key={l.id} className="border-b border-slate-300">
+                <td className="py-1.5">{db.items.find(i => i.id === l.itemId)?.nameAr || l.itemId}</td>
+                <td className="py-1.5 text-center">{l.quantity}</td>
+                <td className="py-1.5 text-center">{db.units.find(u => u.id === l.unitId)?.nameAr || ''}</td>
+                <td className="py-1.5 text-right font-mono">{fmt(l.unitPrice)}</td>
+                <td className="py-1.5 text-right font-mono">{fmt(l.netTotal)}</td>
+                <td className="py-1.5 text-right font-mono">{fmt(l.vatRate || 0)}%</td>
+                <td className="py-1.5 text-right font-mono">{fmt(l.vatAmount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="mt-3 space-y-1" style={{ fontSize: template.bodyFontSize }}>
+          <div>الإجمالي قبل الضريبة: {fmt(purchase.subtotal)} {purchase.currency}</div>
+          <div>ضريبة القيمة المضافة: {fmt(purchase.vatAmount)} {purchase.currency}</div>
+          <div className="text-base font-black">الإجمالي النهائي: {fmt(purchase.totalAmount)} {purchase.currency}</div>
+        </div>
+      </>
+    );
+  }
+
+  // ---- SALES INVOICE ----
+  const s = inv as SalesInvoice;
+  const sLines = db.salesInvoiceLines.filter(l => l.invoiceId === s.id) as SalesInvoiceLine[];
+  const customer = db.customers.find(c => c.id === s.customerId);
+  const warehouse = db.warehouses.find(w => w.id === s.warehouseId);
+  const custody = s.custodyId ? db.representativeCustodies.find(c => c.id === s.custodyId) : undefined;
+  const rep = custody ? db.salesReps.find(r => r.id === custody!.repId) : (s.repId ? db.salesReps.find(r => r.id === s.repId) : undefined);
+  const bonusTotal = sLines.reduce((sum, l) => sum + (l.freeQuantity || 0), 0);
+  // QA-29: the promotional bonus is issued at ZERO price. Multiplying it by the
+  // paid unit price produced the contradictory wording "free bonus ... worth
+  // 150.00" — the printed value is always 0.00, in the document currency.
+  const bonusValue = 0;
+  const bonusUnitAr = sLines.length
+    ? (db.units.find(u => u.id === db.items.find(i => i.id === sLines[0].itemId)?.baseUnitId)?.nameAr || 'PCS')
+    : 'PCS';
+
+  return wrap(
+    <>        <div className="grid grid-cols-2 gap-2 py-2" style={{ fontSize: template.bodyFontSize }}>
+          <div>العميل: <b>{customer?.name || '—'}</b></div>
+          <div>تاريخ الفاتورة: <b>{s.date}</b></div>
+          {template.showCustomerTax && <div>الرقم الضريبي للعميل: {customer?.taxNumber || '—'}</div>}
+          <div>القناة البيعية: <b>{CHANNEL_AR[s.channel] || s.channel}</b></div>
+          {(template.showWarehouse || s.stockSource === 'rep_custody') && (
+            <div>
+              مصدر الصرف: <b>{s.stockSource === 'rep_custody' ? `عهدة مندوب${rep ? ` (${rep.name})` : ''}${custody ? ` — ${custody.custodyNumber}` : ''}` : `مستودع — ${warehouse?.nameAr || s.warehouseId}`}</b>
+            </div>
+          )}
+          <div>طريقة الدفع: <b>{PAYMENT_AR[s.paymentMethod] || s.paymentMethod}</b> · العملة: <b>{s.currency}</b></div>
+        </div>
+
+      <table className="w-full border-collapse" style={{ fontSize: template.tableFontSize }}>
+        <thead>
+          <tr className="border-b-2" style={{ borderColor: template.accentColor }}>
+            <th className="py-1.5 text-right">الصنف</th>
+            <th className="py-1.5 text-center">الكمية</th>
+            <th className="py-1.5 text-center">بونص مجاني</th>
+            <th className="py-1.5 text-center">الوحدة</th>
+            <th className="py-1.5 text-right">سعر الوحدة</th>
+            <th className="py-1.5 text-right">الخصم %</th>
+            <th className="py-1.5 text-right">ضريبة %</th>
+            <th className="py-1.5 text-right">الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sLines.map((l) => {
+            const item = db.items.find(i => i.id === l.itemId);
+            return (
+              <tr key={l.id} className="border-b border-slate-300 align-top">
+                <td className="py-1.5">{item?.nameAr || l.itemId}</td>
+                <td className="py-1.5 text-center font-mono">{l.quantity}</td>
+                <td className="py-1.5 text-center font-mono">
+                  {l.freeQuantity ? (
+                    <span>
+                      {l.freeQuantity}
+                      <span className="block text-[10px]">بونص مجاني</span>
+                    </span>
+                  ) : '—'}
+                </td>
+                <td className="py-1.5 text-center">{db.units.find(u => u.id === item?.baseUnitId)?.nameAr || ''}</td>
+                <td className="py-1.5 text-right font-mono">{fmt(l.unitPrice)}</td>
+                <td className="py-1.5 text-right font-mono">{l.discount || 0}</td>
+                <td className="py-1.5 text-right font-mono">{Math.round((l.vatRate || 0) * 100)}%</td>
+                <td className="py-1.5 text-right font-mono font-bold">{fmt(l.totalBeforeVat)}</td>
+              </tr>
+            );
+          })}
+          {/* F17: the bonus is shown explicitly with a zero price and zero value. */}
+          {bonusTotal > 0 && (
+            <tr className="border-b-2 border-slate-800">
+              <td className="py-1.5 font-bold">إجمالي البونص المجاني</td>
+              <td className="py-1.5 text-center font-mono">{bonusTotal}</td>
+              <td className="py-1.5 text-center font-bold">بونص مجاني</td>
+              <td className="py-1.5 text-center">{bonusUnitAr}</td>
+              <td className="py-1.5 text-right font-mono font-bold">0.00</td>
+              <td />
+              <td className="py-1.5 text-right font-mono">0%</td>
+              <td className="py-1.5 text-right font-mono font-bold">0.00</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <div className="mt-3 space-y-1" style={{ fontSize: template.bodyFontSize }}>
+        <div>الإجمالي قبل الضريبة: <b>{fmt(s.subtotal)}</b> {s.currency}</div>
+        <div>بونص مجاني — {bonusTotal} {bonusUnitAr} — {fmt(bonusValue)} {s.currency === 'USD' ? 'USD' : 'EGP'} (قيمة صفر — لا يُضاف للإيراد)</div>
+        <div>الخصم: {fmt(s.discountAmount || 0)} {s.currency}</div>
+        <div>ضريبة القيمة المضافة ({Math.round((s.vatAmount && s.subtotal ? (s.vatAmount / s.subtotal) * 100 : 0))}%): {fmt(s.vatAmount)} {s.currency}</div>
+        {s.currency === 'USD' && (
+          <div>سعر الصرف: {s.exchangeRate} · الإجمالي بالجنيه: {fmt(s.totalAmountEGP)} ج.م</div>
+        )}
+        {/* F-WH: withholding preview is shown SEPARATELY so it is clear this is NOT
+            VAT and does NOT reduce the invoice gross total or the customer receivable
+            at issuance. */}
+        {template.showWithholding && (
+          <WithholdingSummary
+            rate={s.withholdingRate}
+            amount={s.withholdingAmount}
+            base={Number(s.withholdingBase) || s.subtotal}
+            currency={s.currency === 'USD' ? 'USD' : 'EGP'}
+            reason={s.withholdingReason}
+            className="mt-2"
+          />
+        )}
+        <div className="text-base font-black">الإجمالي النهائي (قبل خصم المنبع): {fmt(s.totalAmount)} {s.currency === 'USD' ? 'USD' : 'EGP'}</div>
+        <NetDueHighlight
+          template={template}
+          totalAmount={Number(s.totalAmount)}
+          withholdingAmount={template.showWithholding ? Number(s.withholdingAmount) || 0 : 0}
+          currency={s.currency === 'USD' ? 'USD' : 'EGP'}
+          format={fmt}
+        />
+        {s.notes ? <div className="pt-1">ملاحظات: {s.notes}</div> : null}
+      </div>
+    </>
+  );
+};
+
+export default InvoicePrint;

@@ -1,0 +1,8 @@
+{
+  "name": "AZ ERP",
+  "description": "نظام تخطيط موارد متكامل باللغة العربية، قابل للإعداد لأي نشاط (تصنيع، تجارة، خدمات)، لإدارة المخازن والمبيعات والمشتريات والإنتاج والحسابات بالقيد المزدوج.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

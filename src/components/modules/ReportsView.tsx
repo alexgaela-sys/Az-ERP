@@ -1,0 +1,1184 @@
+import React, { useState } from 'react';
+import { 
+  BarChart3, FileSpreadsheet, Printer, Download, 
+  Calendar, Filter, PieChart, TrendingUp, Layers
+} from 'lucide-react';
+import { erpDb } from '../../services/db';
+import { isDebitNatureCategory } from '../../types/erp';
+import { LedgerService } from '../../services/ledger';
+import { InventoryEngine } from '../../services/inventory';
+import { ManufacturingEngine } from '../../services/manufacturing';
+import { SettingsService } from '../../services/settings';
+import { printDocument } from '../printUtils';
+
+import { AuthService } from '../../services/auth';
+import { WorkflowService } from '../../services/workflows';
+import { buildIncomeStatement, incomeStatementTitle } from '../../services/incomeStatement';
+import { IncomeStatementSheet, exportIncomeStatementExcel } from './IncomeStatementSheet';
+import { PermissionService } from '../../services/permissions';
+
+export type ReportType = 
+  | 'trial_balance'
+  | 'income_statement'
+  | 'balance_sheet'
+  | 'receivables_aging'
+  | 'payables_aging'
+  | 'inventory_valuation'
+  | 'sales_analysis'
+  | 'vat_report'
+  | 'expiry_status'
+  | 'raw_material_variance'
+  | 'material_differences'
+  | 'production_orders';
+
+export const ReportsView: React.FC<{
+  /** ITEM 18 — contextual deep-link (dashboard → this report). */
+  initialReport?: ReportType;
+  /** ITEM 18 — contextual links back to the working screens. */
+  onNavigateTab?: (tab: string) => void;
+}> = ({ initialReport, onNavigateTab }) => {
+  const db = erpDb.getSnapshot();
+  // People without the "prices" permission only get the reports that carry no money.
+  const MONEY_REPORTS: ReportType[] = [
+    'trial_balance', 'income_statement', 'balance_sheet', 'receivables_aging',
+    'payables_aging', 'inventory_valuation', 'sales_analysis', 'vat_report', 'raw_material_variance',
+  ];
+  const canSeePrices = PermissionService.canSeePrices(AuthService.getCurrentSession()?.user);
+  const [selectedReport, setSelectedReport] = useState<ReportType>(() => {
+    const wanted = initialReport || 'trial_balance';
+    return !canSeePrices && MONEY_REPORTS.includes(wanted) ? 'expiry_status' : wanted;
+  });
+  React.useEffect(() => {
+    if (!canSeePrices && MONEY_REPORTS.includes(selectedReport)) setSelectedReport('expiry_status');
+  });
+
+  // ITEM 13 / R-13 — the expiry-threshold button used to only navigate away to
+  // Settings, which contained no editor for it, so the value could never be
+  // changed and the "reset threshold" action was dead. It now edits INLINE:
+  // save goes through the guarded SettingsService (audit-logged), the report
+  // re-reads the saved value on the next render and the alert buckets follow.
+  const [, setTick] = useState(0);
+  const [tuitionInput, setTuitionInput] = useState('');
+  const [provisionMsg, setProvisionMsg] = useState<string | null>(null);
+  const [thresholdEditing, setThresholdEditing] = useState(false);
+  const [thresholdInput, setThresholdInput] = useState('');
+  const [thresholdMessage, setThresholdMessage] = useState<string | null>(null);
+
+  // ---------- Period filter (F13: reports are period-aware, nothing is hidden) ----------
+  const firstOfMonth = new Date();
+  firstOfMonth.setDate(1);
+  const [fromDate, setFromDate] = useState(firstOfMonth.toISOString().split('T')[0]);
+  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [allPeriods, setAllPeriods] = useState(true);
+
+  // ---------- ITEM 7 / 10-11 / 13 / 18: report derivations ----------
+  // ITEM 13 — expiry status uses the CONFIGURED threshold from settings,
+  // never a hardcoded "10 days".
+  const expiryThresholdDays = SettingsService.getExpiryWarningDays();
+  const expiryRows = InventoryEngine.getExpiringBatches(expiryThresholdDays);
+
+  // ITEM 7 — raw-material deviation: standard vs REAL book cost on the stock,
+  // plus issued-vs-planned usage from actual production consumption records.
+  // R-07 — the usage side of the variance report is now computed by the
+  // MANUFACTURING ENGINE from the real issue records of non-cancelled orders,
+  // with the expected quantity derived per material from the order's FROZEN BOM
+  // snapshot. The old inline version summed every consumption row regardless of
+  // order status and compared it against a rolling "planned" figure that drifted
+  // after BOM edits, so materials that were never issued still showed variance.
+  const rawUsageByMaterial = ManufacturingEngine.getRawMaterialUsageReport();
+  const rawMaterialRows = db.items
+    .filter(i => i.itemType === 'raw_material' || i.itemType === 'packaging_material')
+    .map(item => {
+      const qty = InventoryEngine.getItemBalance(item.id);
+      const stockValue = InventoryEngine.getItemValue(item.id);
+      const actualUnit = qty > 0 ? stockValue / qty : (item.actualCost || item.standardCost || 0);
+      const standardUnit = item.standardCost || 0;
+      const priceDeltaUnit = actualUnit - standardUnit;
+      const stockPriceDeviation = qty * priceDeltaUnit;
+      const usage = rawUsageByMaterial.find(u => u.materialItemId === item.id);
+      const issuedQty = usage?.issuedQty || 0;
+      const plannedQty = usage?.expectedQty || 0;
+      const usageDeltaValue = usage?.varianceValue || 0;
+      return { item, qty, actualUnit, standardUnit, priceDeltaUnit, stockPriceDeviation, issuedQty, plannedQty, usageDeltaValue };
+    })
+    .filter(r => r.qty > 0 || r.issuedQty > 0);
+
+  // ITEM 10-11 — REAL differences only. Recovered material is booked at its
+  // documented cost; defective and scrap stay QUANTITIES with no invented
+  // 50% defective value and no automatic 10% scrap valuation.
+  const recoveryValueByOrder = new Map<string, number>();
+  db.inventoryTransactions
+    .filter(t => t.documentType === 'استرداد خامات من إنتاج معيب')
+    .forEach(t => {
+      recoveryValueByOrder.set(
+        t.documentNumber,
+        (recoveryValueByOrder.get(t.documentNumber) || 0) + (t.totalCost || 0),
+      );
+    });
+
+  // ITEM 18 — production orders overview (shared with the real-differences report).
+  const productionOrderRows = db.productionOrders.map(order => {
+    const product = db.items.find(i => i.id === order.productId);
+    const recoveryValue = recoveryValueByOrder.get(order.orderNumber) || 0;
+    const quantityGap = (order.producedQuantity || 0) - (order.plannedQuantity || 0);
+    const yieldPct = order.plannedQuantity > 0
+      ? ((order.producedQuantity || 0) / order.plannedQuantity) * 100
+      : 0;
+    return { order, product, recoveryValue, quantityGap, yieldPct };
+  });
+
+  const ORDER_STATUS_AR: Record<string, string> = {
+    draft: 'مسودة',
+    released: 'معتمد ومحرر',
+    in_progress: 'قيد التنفيذ',
+    completed: 'مكتمل',
+    cancelled: 'ملغى',
+  };
+
+  const inPeriod = (dateStr: string) => {
+    if (allPeriods) return true;
+    const d = new Date(dateStr);
+    const from = new Date(fromDate);
+    const to = new Date(toDate);
+    to.setHours(23, 59, 59, 999);
+    return d >= from && d <= to;
+  };
+
+  const accounts = db.accounts.filter(a => !a.isHeader);
+
+  /** Signed balance (nature-aware) of an account over the selected period. Never clamped. */
+  const signedBalance = (acc: { id: string; category: string }, periodOnly: boolean) => {
+    let debit = 0;
+    let credit = 0;
+    db.journalEntries.filter(j => j.isPosted && (!periodOnly || inPeriod(j.date))).forEach(jv => {
+      jv.lines.filter(l => l.accountId === acc.id).forEach(l => {
+        debit += l.debit;
+        credit += l.credit;
+      });
+    });
+    return isDebitNatureCategory(acc.category as any) ? (debit - credit) : (credit - debit);
+  };
+
+  // 1. Trial Balance calculation — every movement, plus the SIGNED closing balance so
+  //    abnormal (negative) balances stay visible instead of being clamped to zero.
+  const trialBalanceData = accounts.map(acc => {
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    db.journalEntries.filter(j => j.isPosted).forEach(jv => {
+      jv.lines.filter(l => l.accountId === acc.id).forEach(l => {
+        totalDebit += l.debit;
+        totalCredit += l.credit;
+      });
+    });
+
+    const isDebitNature = isDebitNatureCategory(acc.category);
+    // Raw balance: > 0 = debit balance, < 0 = credit balance (what رصيد مدين / رصيد دائن mean).
+    const rawBalance = totalDebit - totalCredit;
+    // Nature-signed view used for the "طبيعة الحساب" column and abnormal detection.
+    const net = isDebitNature ? rawBalance : -rawBalance;
+
+    return {
+      acc,
+      totalDebit,
+      totalCredit,
+      net,
+      isDebitNature,
+      // Present each balance on the side it actually sits on, so the totals row
+      // always balances (Σ debit balances = Σ credit balances) — even when an
+      // account carries an opposite-to-nature (abnormal) balance, which stays
+      // visible through `abnormal` + the nature-signed net column.
+      closingDebit: rawBalance > 0 ? rawBalance : 0,
+      closingCredit: rawBalance < 0 ? -rawBalance : 0,
+      abnormal: net < 0,
+    };
+  }).filter(r => Math.abs(r.totalDebit) > 0.005 || Math.abs(r.totalCredit) > 0.005 || Math.abs(r.net) > 0.005);
+
+  const tbTotalDebitMoves = trialBalanceData.reduce((s, r) => s + r.totalDebit, 0);
+  const tbTotalCreditMoves = trialBalanceData.reduce((s, r) => s + r.totalCredit, 0);
+  const tbTotalClosingDebit = trialBalanceData.reduce((s, r) => s + r.closingDebit, 0);
+  const tbTotalClosingCredit = trialBalanceData.reduce((s, r) => s + r.closingCredit, 0);
+  const tbNetMoves = tbTotalDebitMoves - tbTotalCreditMoves;
+  const tbAbnormal = trialBalanceData.filter(r => r.abnormal);
+
+  // 2. Income Statement — period-aware, signed (no Math.max clamping).
+  const revenueAccounts = accounts.filter(a => a.category === 'Revenue');
+  const revenueRows = revenueAccounts.map(a => ({ acc: a, balance: signedBalance(a, !allPeriods) }));
+  const totalRevenue = revenueRows.reduce((s, r) => s + r.balance, 0);
+
+  const cogsAccounts = accounts.filter(a => a.category === 'COGS');
+  const cogsRows = cogsAccounts.map(a => ({ acc: a, balance: signedBalance(a, !allPeriods) }));
+  const totalCogs = cogsRows.reduce((s, r) => s + r.balance, 0);
+  const grossProfit = totalRevenue - totalCogs;
+
+  // Family-support provision (10% of profit) is an appropriation of profit, shown BELOW the profit line.
+  const FAMILY_PROVISION_ID = 'acc-6112';
+  const expenseAccounts = accounts.filter(a => (a.category === 'Operating Expenses' || a.category === 'Other Expenses') && a.id !== FAMILY_PROVISION_ID);
+  const expenseRows = expenseAccounts.map(a => ({ acc: a, balance: signedBalance(a, !allPeriods) }));
+  const totalOperatingExpenses = expenseRows.reduce((s, r) => s + r.balance, 0);
+  const profitBeforeProvision = grossProfit - totalOperatingExpenses;
+  const familyProvisionAcc = accounts.find(a => a.id === FAMILY_PROVISION_ID);
+  const familyProvision = familyProvisionAcc ? signedBalance(familyProvisionAcc, !allPeriods) : 0;
+  const netOperatingIncome = profitBeforeProvision - familyProvision;
+
+  // 3. Balance Sheet — cumulative (all periods), signed, with an explicit imbalance line.
+  const assetAccounts = accounts.filter(a => a.category === 'Assets');
+  const assetRows = assetAccounts.map(a => ({ acc: a, balance: signedBalance(a, false) }));
+  const totalAssets = assetRows.reduce((s, r) => s + r.balance, 0);
+
+  const liabilityAccounts = accounts.filter(a => a.category === 'Liabilities');
+  const liabilityRows = liabilityAccounts.map(a => ({ acc: a, balance: signedBalance(a, false) }));
+  const totalLiabilities = liabilityRows.reduce((s, r) => s + r.balance, 0);
+
+  const equityAccounts = accounts.filter(a => a.category === 'Equity');
+  const equityRows = equityAccounts.map(a => ({ acc: a, balance: signedBalance(a, false) }));
+  const baseEquity = equityRows.reduce((s, r) => s + r.balance, 0);
+  // Current-period result flows into equity; the opening equity stays as booked.
+  // الميزانية تراكمية دائماً: الربح المرحّل لحقوق الملكية = كل الإيرادات − كل المصروفات منذ البداية (مهما كانت الفترة المختارة في قائمة الدخل)
+  const cumProfit = accounts.filter(a => a.category === 'Revenue').reduce((t, a) => t + signedBalance(a, false), 0)
+    - accounts.filter(a => ['COGS', 'Operating Expenses', 'Other Expenses'].includes(a.category)).reduce((t, a) => t + signedBalance(a, false), 0);
+  const totalEquity = baseEquity + cumProfit;
+  const bsImbalance = totalAssets - (totalLiabilities + totalEquity);
+
+  // 4. Receivables Aging — derived from the AUTHORITATIVE customer statement
+  // (posted GL receivable lines), so invoices, returns, cash/bank collections,
+  // cheques and bounces, and export collections all net correctly. Credit
+  // balances are shown in their own column and are NEVER hidden.
+  // QA-10: the aging report is a VIEW over the single authoritative
+  // settlement-aware allocation in LedgerService — the buckets always tie to
+  // the customer statement closing balance, and a cheque receipt settles its
+  // invoice exactly once (no double counting).
+  const receivablesAging = LedgerService.buildReceivablesAging()
+    .map(r => ({
+      custId: r.customerId,
+      currency: r.currency,
+      b0_30: r.b0_30,
+      b31_60: r.b31_60,
+      b61_90: r.b61_90,
+      b90plus: r.b90plus,
+      credit: r.credit,
+      total: r.total,
+      cust: db.customers.find(c => c.id === r.customerId)!,
+    }))
+    .filter(r => r.cust);
+
+  const agingTotals = receivablesAging.reduce((acc, r) => ({
+    b0_30: acc.b0_30 + r.b0_30,
+    b31_60: acc.b31_60 + r.b31_60,
+    b61_90: acc.b61_90 + r.b61_90,
+    b90plus: acc.b90plus + r.b90plus,
+    credit: acc.credit + r.credit,
+    total: acc.total + r.total,
+  }), { b0_30: 0, b31_60: 0, b61_90: 0, b90plus: 0, credit: 0, total: 0 });
+
+  // R-24 — the aging is expressed in each CUSTOMER's currency, so the totals
+  // are kept apart: an EGP figure and a USD figure are never added together
+  // without an explicit, documented conversion.
+  const agingByCurrency = (['EGP', 'USD'] as const).map(cur => {
+    const rows = receivablesAging.filter(r => r.currency === cur);
+    return {
+      currency: cur,
+      count: rows.length,
+      b0_30: rows.reduce((s, r) => s + r.b0_30, 0),
+      b31_60: rows.reduce((s, r) => s + r.b31_60, 0),
+      b61_90: rows.reduce((s, r) => s + r.b61_90, 0),
+      b90plus: rows.reduce((s, r) => s + r.b90plus, 0),
+      credit: rows.reduce((s, r) => s + r.credit, 0),
+      total: rows.reduce((s, r) => s + r.total, 0),
+    };
+  }).filter(g => g.count > 0);
+  const usdAgingRate = db.company.currentUsdExchangeRate || 1;
+
+  // 5. VAT Report — derived from the ACTUAL 1113/2103 journal lines in the period.
+  const vatLines = (accountId: string) => {
+    let balance = 0;
+    db.journalEntries.filter(j => j.isPosted && inPeriod(j.date)).forEach(jv => {
+      jv.lines.filter(l => l.accountId === accountId).forEach(l => { balance += l.debit - l.credit; });
+    });
+    return balance;
+  };
+  const inputVatDebits = db.journalEntries.filter(j => j.isPosted && inPeriod(j.date))
+    .flatMap(j => j.lines).filter(l => l.accountId === 'acc-1113');
+  const outputVatCredits = db.journalEntries.filter(j => j.isPosted && inPeriod(j.date))
+    .flatMap(j => j.lines).filter(l => l.accountId === 'acc-2103');
+  const inputVatBalance = vatLines('acc-1113');
+  const outputVatBalance = -vatLines('acc-2103'); // 2103 is a liability (credit nature)
+  const netVatPayable = outputVatBalance - inputVatBalance;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-black text-slate-900">التقارير المالية والتحليلية (Financial Reports)</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            ميزان المراجعة، قائمة الدخل، الميزانية العمومية، أعمار الديون، تقرير ضريبة القيمة المضافة ومطابقة الأرصدة
+          </p>
+        </div>
+
+        <button
+          onClick={printDocument}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300 transition"
+        >
+          <Printer className="w-4 h-4" />
+          <span>طباعة التقرير (Print / PDF)</span>
+        </button>
+      </div>
+
+      {/* Period filter */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 flex flex-col sm:flex-row sm:items-end gap-3">
+        <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+          <input
+            type="checkbox"
+            checked={allPeriods}
+            onChange={(e) => setAllPeriods(e.target.checked)}
+            className="w-4 h-4 accent-slate-900"
+          />
+          كل الفترات (تراكمي)
+        </label>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <Calendar className="w-4 h-4" />
+          <span className="font-bold text-slate-700">من</span>
+          <input
+            type="date"
+            value={fromDate}
+            disabled={allPeriods}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="p-2 rounded-xl bg-slate-50 border border-slate-300 text-xs disabled:opacity-50"
+          />
+          <span className="font-bold text-slate-700">إلى</span>
+          <input
+            type="date"
+            value={toDate}
+            disabled={allPeriods}
+            onChange={(e) => setToDate(e.target.value)}
+            className="p-2 rounded-xl bg-slate-50 border border-slate-300 text-xs disabled:opacity-50"
+          />
+        </div>
+        <p className="text-[11px] text-slate-500 sm:mr-auto">
+          {allPeriods
+            ? 'التقارير تُحسب على كامل الحركات المرحلة (تراكمي)'
+            : 'قائمة الدخل وضريبة القيمة المضافة تُحسب على الفترة المحددة فقط، بينما الميزانية وميزان المراجعة تظل تراكمية'}
+        </p>
+      </div>
+
+      {/* Report Selection Tabs */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+        <button
+          data-price
+          onClick={() => setSelectedReport('trial_balance')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+            selectedReport === 'trial_balance' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          ميزان المراجعة (Trial Balance)
+        </button>
+        <button
+          data-price
+          onClick={() => setSelectedReport('income_statement')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+            selectedReport === 'income_statement' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          قائمة الدخل والأرباح (P&L)
+        </button>
+        <button
+          data-price
+          onClick={() => setSelectedReport('balance_sheet')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+            selectedReport === 'balance_sheet' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          الميزانية العمومية (Balance Sheet)
+        </button>
+        <button
+          data-price
+          onClick={() => setSelectedReport('receivables_aging')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+            selectedReport === 'receivables_aging' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          أعمار ديون العملاء (Aging)
+        </button>
+        <button
+          data-price
+          onClick={() => setSelectedReport('vat_report')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+            selectedReport === 'vat_report' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          إقرار ضريبة القيمة المضافة (VAT)
+        </button>
+        <button
+          onClick={() => setSelectedReport('expiry_status')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+            selectedReport === 'expiry_status' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          الصلاحية (Expiry)
+        </button>
+        <button
+          data-price
+          onClick={() => setSelectedReport('raw_material_variance')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+            selectedReport === 'raw_material_variance' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          انحراف الخامات (Material Variance)
+        </button>
+        <button
+          onClick={() => setSelectedReport('material_differences')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+            selectedReport === 'material_differences' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          فروق الإنتاج الحقيقية (Real Differences)
+        </button>
+        <button
+          onClick={() => setSelectedReport('production_orders')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+            selectedReport === 'production_orders' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          أوامر الإنتاج (Production Orders)
+        </button>
+      </div>
+
+      {/* 1. Trial Balance */}
+      {selectedReport === 'trial_balance' && (
+        <div className="print-area bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+            <div>
+              <h3 className="font-bold text-xs text-slate-800">ميزان المراجعة بالمجاميع والأرصدة</h3>
+              <p className="text-[11px] text-slate-500">التحقق من توازن حركات وأرصدة كافة الحسابات الفرعية بالدفاتر</p>
+            </div>
+          </div>
+
+          <table className="w-full text-right text-xs">
+            <thead className="bg-slate-100 text-slate-700 font-bold">
+              <tr>
+                <th className="p-3">كود الحساب</th>
+                <th className="p-3">اسم الحساب</th>
+                <th className="p-3 text-center">مجموع المدين</th>
+                <th className="p-3 text-center">مجموع الدائن</th>
+                <th className="p-3 text-center">رصيد مدين</th>
+                <th className="p-3 text-center">رصيد دائن</th>
+                <th className="p-3 text-center">صافي الرصيد (طبيعة الحساب)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-mono">
+              {trialBalanceData.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-400 font-sans">
+                    لا توجد حركات مرحلة بميزان المراجعة بعد
+                  </td>
+                </tr>
+              ) : (
+                trialBalanceData.map(r => (
+                  <tr key={r.acc.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-bold">
+                      {r.acc.code}
+                      {r.abnormal && (
+                        <span className="mr-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold" title="رصيد معاكس لطبيعة الحساب">
+                          رصيد عكسي
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-3 font-sans font-bold text-slate-800">{r.acc.nameAr}</td>
+                    <td className="p-3 text-center">{r.totalDebit > 0 ? r.totalDebit.toLocaleString('ar-EG', { maximumFractionDigits: 2 }) : '-'}</td>
+                    <td className="p-3 text-center">{r.totalCredit > 0 ? r.totalCredit.toLocaleString('ar-EG', { maximumFractionDigits: 2 }) : '-'}</td>
+                    <td className="p-3 text-center font-bold text-emerald-700">{r.closingDebit > 0 ? r.closingDebit.toLocaleString('ar-EG', { maximumFractionDigits: 2 }) : '-'}</td>
+                    <td className="p-3 text-center font-bold text-rose-700">{r.closingCredit > 0 ? r.closingCredit.toLocaleString('ar-EG', { maximumFractionDigits: 2 }) : '-'}</td>
+                    <td className={`p-3 text-center font-bold ${r.net < 0 ? 'text-amber-700' : 'text-slate-800'}`}>
+                      {r.net.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} {r.isDebitNature ? 'مدين' : 'دائن'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {trialBalanceData.length > 0 && (
+              <tfoot className="bg-slate-100 font-mono font-black text-slate-900 border-t-2 border-slate-300">
+                <tr>
+                  <td colSpan={2} className="p-3 font-sans">الإجمالي العام لميزان المراجعة</td>
+                  <td className="p-3 text-center">{tbTotalDebitMoves.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                  <td className="p-3 text-center">{tbTotalCreditMoves.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                  <td className="p-3 text-center text-emerald-800">{tbTotalClosingDebit.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                  <td className="p-3 text-center text-rose-800">{tbTotalClosingCredit.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                  <td className="p-3 text-center">
+                    {(tbTotalClosingDebit - tbTotalClosingCredit).toLocaleString('ar-EG', { maximumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
+
+      {tbAbnormal.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-900">
+          <p className="font-bold mb-1">حسابات برصيد معاكس لطبيعتها ({tbAbnormal.length})</p>
+          <p className="mb-2">هذه الأرصدة ظاهرة أعلاه كما هي ولم يتم إخفاؤها أو تصفيرها:</p>
+          <ul className="space-y-0.5 font-mono">
+            {tbAbnormal.map(r => (
+              <li key={r.acc.id}>
+                • {r.acc.code} — {r.acc.nameAr}: {Math.abs(r.net).toLocaleString('ar-EG', { maximumFractionDigits: 2 })} {r.isDebitNature ? 'دائن' : 'مدين'} (عكس طبيعة الحساب)
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 2. Income Statement - same layout as the company's monthly sheet */}
+      {selectedReport === 'income_statement' && (() => {
+        const is = buildIncomeStatement(db, { allPeriods, from: fromDate, to: toDate });
+        const title = incomeStatementTitle(allPeriods, fromDate, toDate, 'سناك دب');
+        const target = Math.max(0, Math.round(is.profitBefore * 10) / 100);
+        const stale = is.profitBefore > 0 && Math.abs(is.provision - target) > 1;
+        return (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end gap-2 max-w-4xl mx-auto">
+              <button
+                onClick={() => exportIncomeStatementExcel(title, is.rows, `قائمة-الدخل-${allPeriods ? 'الكل' : toDate.slice(0, 7)}.xls`)}
+                className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+              >تصدير Excel</button>
+              {!allPeriods && (
+                <>
+                  <label className="text-xs font-bold text-slate-700 flex flex-col gap-1">
+                    منه رسوم دراسية (اختياري)
+                    <input type="number" min="0" value={tuitionInput} onChange={e => setTuitionInput(e.target.value)} className="w-32 px-2 py-1.5 rounded-lg border border-slate-300 text-xs font-mono" />
+                  </label>
+                  <button
+                    onClick={() => {
+                      const [y, m] = toDate.split('-').map(Number);
+                      const res = WorkflowService.postFamilySupportProvision({ year: y, month: m, tuitionAmount: Number(tuitionInput) || 0, userId: AuthService.getCurrentSession()?.user?.id, userName: AuthService.getCurrentSession()?.user?.name });
+                      setProvisionMsg(res.success ? (res.posted ? `تم ترحيل المخصص: ${res.posted.toLocaleString('en-US')} (10% من ربح ${res.profitBefore?.toLocaleString('en-US')})` : 'المخصص مرحّل بالفعل بنفس القيمة') : (res.error || 'تعذر الترحيل'));
+                      setTick(t => t + 1);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs"
+                  >ترحيل مخصص دعم الأسرة 10% لشهر {toDate.slice(0, 7)}</button>
+                </>
+              )}
+            </div>
+            {provisionMsg && <div className="max-w-4xl mx-auto text-xs font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-2">{provisionMsg}</div>}
+            {stale && !allPeriods && (
+              <div className="max-w-4xl mx-auto text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                المخصص المرحّل ({is.provision.toLocaleString('en-US')}) يختلف عن 10% من الربح ({target.toLocaleString('en-US')}) — اضغط "ترحيل مخصص دعم الأسرة" لتصحيحه.
+              </div>
+            )}
+            <IncomeStatementSheet title={title} rows={is.rows} />
+          </div>
+        );
+      })()}
+
+      {/* 3. Balance Sheet */}
+      {selectedReport === 'balance_sheet' && (
+        <div className="print-area bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-6 max-w-4xl mx-auto">
+          <div className="text-center pb-4 border-b border-slate-200">
+            <h3 className="text-base font-black text-slate-900">{db.company.nameAr}</h3>
+            <h4 className="text-sm font-bold text-slate-700 mt-1">قائمة المركز المالي (الميزانية العمومية)</h4>
+            <span className="text-xs text-slate-400">
+              كما في {new Date().toLocaleDateString('ar-EG')} — تراكمية على كامل الحركات المرحلة - العملة: ج.م
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+            {/* Assets */}
+            <div className="space-y-3">
+              <div className="p-2.5 bg-slate-100 rounded-lg font-bold text-sm text-slate-800 flex justify-between">
+                <span>الأصول المتداولة (Assets)</span>
+                <span className="font-mono">{totalAssets.toLocaleString('ar-EG')} ج.م</span>
+              </div>
+              <div className="divide-y divide-slate-100 font-mono">
+                {assetRows.map(r => (
+                  <div key={r.acc.id} className="py-1.5 flex justify-between text-slate-700">
+                    <span className="font-sans">{r.acc.nameAr}</span>
+                    <span className={r.balance < 0 ? 'text-amber-700 font-bold' : ''}>{r.balance.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 bg-emerald-50 text-emerald-950 font-black flex justify-between rounded-xl font-mono text-sm border border-emerald-200">
+                <span className="font-sans">إجمالي الأصول:</span>
+                <span>{totalAssets.toLocaleString('ar-EG')} ج.م</span>
+              </div>
+            </div>
+
+            {/* Liabilities & Equity */}
+            <div className="space-y-3">
+              <div className="p-2.5 bg-slate-100 rounded-lg font-bold text-sm text-slate-800 flex justify-between">
+                <span>الخصوم والالتزامات (Liabilities)</span>
+                <span className="font-mono">{totalLiabilities.toLocaleString('ar-EG')} ج.م</span>
+              </div>
+              <div className="divide-y divide-slate-100 font-mono">
+                {liabilityRows.map(r => (
+                  <div key={r.acc.id} className="py-1.5 flex justify-between text-slate-700">
+                    <span className="font-sans">{r.acc.nameAr}</span>
+                    <span className={r.balance < 0 ? 'text-amber-700 font-bold' : ''}>{r.balance.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-2.5 bg-slate-100 rounded-lg font-bold text-sm text-slate-800 flex justify-between mt-4">
+                <span>حقوق الملكية (Equity)</span>
+                <span className="font-mono">{totalEquity.toLocaleString('ar-EG')} ج.م</span>
+              </div>
+              <div className="divide-y divide-slate-100 font-mono">
+                {equityRows.map(r => (
+                  <div key={r.acc.id} className="py-1.5 flex justify-between text-slate-700">
+                    <span className="font-sans">{r.acc.nameAr}</span>
+                    <span>{r.balance.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</span>
+                  </div>
+                ))}
+                <div className="py-1.5 flex justify-between text-emerald-700 font-bold">
+                  <span className="font-sans">أرباح الفترة الحالية (تراكمي)</span>
+                  <span>{cumProfit.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-900 text-white font-black flex justify-between rounded-xl font-mono text-sm shadow-md">
+                <span className="font-sans">إجمالي الخصوم وحقوق الملكية:</span>
+                <span>{(totalLiabilities + totalEquity).toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م</span>
+              </div>
+
+              {/* F13: the balance-sheet identity is shown explicitly, never forced. */}
+              <div className={`p-3 rounded-xl border font-mono text-xs font-bold flex justify-between ${
+                Math.abs(bsImbalance) < 0.01
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-amber-50 border-amber-300 text-amber-900'
+              }`}>
+                <span className="font-sans">
+                  {Math.abs(bsImbalance) < 0.01
+                    ? 'الميزانية متوازنة: الأصول = الخصوم + حقوق الملكية'
+                    : 'فرق غير موزون (معروض كما هو دون إخفاء)'}
+                </span>
+                <span>{(totalAssets - (totalLiabilities + totalEquity)).toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Receivables Aging */}
+      {selectedReport === 'receivables_aging' && (
+        <div className="print-area bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-4 bg-slate-50 border-b border-slate-200">
+            <h3 className="font-bold text-xs text-slate-800">تقرير أعمار ديون العملاء (Aging of Receivables)</h3>
+            <p className="text-[11px] text-slate-500">
+              محسوب من فواتير البيع المرحّلة الفعلية مطروحاً منها التخصيصات المحصّلة فعلياً، buckets: 0-30 / 31-60 / 61-90 / +90 يوم — كل صف بعملة صاحبه، والإجماليات مفصولة حسب العملة فلا تُجمع الجنيه بالدولار
+            </p>
+          </div>
+
+          <table className="w-full text-right text-xs">
+            <thead className="bg-slate-100 text-slate-700 font-bold">
+              <tr>
+                  <th className="p-3.5">العميل</th>
+                  <th className="p-3.5 text-center">العملة</th>
+                  <th className="p-3.5 text-center">الرصيد الكلي</th>
+                  <th className="p-3.5 text-center">سارٍ (0 - 30 يوم)</th>
+                  <th className="p-3.5 text-center">متأخر (31 - 60 يوم)</th>
+                  <th className="p-3.5 text-center">متأخر (61 - 90 يوم)</th>
+                  <th className="p-3.5 text-center">متحمل (أكثر من 90 يوم)</th>
+                  <th className="p-3.5 text-center">رصيد دائن (دفع مقدمة)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-mono">
+              {receivablesAging.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-400 font-sans">
+                    لا توجد مديونيات عملاء قائمة
+                  </td>
+                </tr>
+              ) : (
+                receivablesAging.map((r, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50">
+                    <td className="p-3.5 font-sans font-bold text-slate-900">{r.cust.name}</td>
+                    <td className="p-3.5 text-center">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${r.currency === 'USD' ? 'bg-cyan-50 text-cyan-800' : 'bg-slate-100 text-slate-700'}`}>
+                        {r.currency}
+                      </span>
+                    </td>
+                    <td className={`p-3.5 text-center font-black ${r.total < 0 ? 'text-rose-700' : 'text-slate-900'}`}>
+                      {r.total.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="p-3.5 text-center text-emerald-700 font-bold">{r.b0_30.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center text-amber-700 font-bold">{r.b31_60.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center text-orange-700 font-bold">{r.b61_90.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center text-rose-700 font-bold">{r.b90plus.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center text-slate-600 font-bold">{r.credit > 0 ? r.credit.toLocaleString('ar-EG', { maximumFractionDigits: 2 }) : '-'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {receivablesAging.length > 0 && (
+              <tfoot className="bg-slate-100 font-mono font-black text-slate-900 border-t-2 border-slate-300">
+                {agingByCurrency.map(g => (
+                  <tr key={g.currency}>
+                    <td className="p-3.5 font-sans" colSpan={2}>
+                      إجمالي {g.currency === 'USD' ? 'ديون التصدير بالدولار' : 'ديون محلية بالجنيه'} ({g.count} عميل)
+                    </td>
+                    <td className="p-3.5 text-center">{g.total.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} {g.currency === 'USD' ? '$' : 'ج.م'}</td>
+                    <td className="p-3.5 text-center text-emerald-800">{g.b0_30.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center text-amber-800">{g.b31_60.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center text-orange-800">{g.b61_90.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center text-rose-800">{g.b90plus.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center text-slate-700">{g.credit > 0 ? g.credit.toLocaleString('ar-EG', { maximumFractionDigits: 2 }) : '-'}</td>
+                  </tr>
+                ))}
+                {agingByCurrency.length > 1 && (
+                  <tr className="border-t border-slate-300">
+                    <td className="p-3.5 font-sans" colSpan={2}>
+                      الإجمالي المجمع بالجنيه (الدولار محوَّل بسعر {usdAgingRate} — للعرض فقط، لا يُخفي فرق العملة)
+                    </td>
+                    <td className="p-3.5 text-center">
+                      {(agingByCurrency.reduce((s, g) => s + g.total * (g.currency === 'USD' ? usdAgingRate : 1), 0)).toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م
+                    </td>
+                    <td className="p-3.5 text-center">{(agingByCurrency.reduce((s, g) => s + g.b0_30 * (g.currency === 'USD' ? usdAgingRate : 1), 0)).toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center">{(agingByCurrency.reduce((s, g) => s + g.b31_60 * (g.currency === 'USD' ? usdAgingRate : 1), 0)).toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center">{(agingByCurrency.reduce((s, g) => s + g.b61_90 * (g.currency === 'USD' ? usdAgingRate : 1), 0)).toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center">{(agingByCurrency.reduce((s, g) => s + g.b90plus * (g.currency === 'USD' ? usdAgingRate : 1), 0)).toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3.5 text-center">{(agingByCurrency.reduce((s, g) => s + g.credit * (g.currency === 'USD' ? usdAgingRate : 1), 0)).toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                  </tr>
+                )}
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
+
+      {/* 5. VAT Report */}
+      {selectedReport === 'vat_report' && (
+        <div className="print-area bg-white rounded-2xl border border-slate-200 shadow-xs p-6 max-w-2xl mx-auto space-y-4">
+          <div className="text-center pb-3 border-b border-slate-200">
+            <h3 className="font-bold text-sm text-slate-900">إقرار ضريبة القيمة المضافة المصرية (VAT 14%)</h3>
+            <p className="text-xs text-slate-500">
+              محسوب من قيود الدفاتر الفعلية على 1113 (مدخلات) و2103 (مخرجات) —
+              {allPeriods ? ' كل الفترات' : ` الفترة من ${fromDate} إلى ${toDate}`}
+            </p>
+          </div>
+
+          <div className="space-y-3 text-xs">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center">
+              <div>
+                <span className="font-bold text-slate-800">ضريبة المخرجات المحصلة عن المبيعات (حساب GL: 2103)</span>
+                <span className="text-[10px] text-slate-400 block">فواتير بيع محلية 14%</span>
+              </div>
+              <span className="font-mono font-bold text-sm text-slate-900">
+                {outputVatBalance.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م
+              </span>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center">
+              <div>
+                <span className="font-bold text-slate-800">ضريبة المدخلات المخصومة عن المشتريات (حساب GL: 1113)</span>
+                <span className="text-[10px] text-slate-400 block">فواتير توريد خامات ومواد تعبئة ومصروفات</span>
+              </div>
+              <span className="font-mono font-bold text-sm text-slate-900">
+                {inputVatBalance.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م
+              </span>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-900 text-white flex justify-between items-center font-mono">
+              <span className="font-sans font-bold text-sm">صافي الضريبة المستحقة للسداد لمصلحة الضرائب:</span>
+              <span className={`text-base font-black ${netVatPayable >= 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {netVatPayable.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م
+              </span>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-mono">
+              <div>عدد قيود ضريبة المدخلات (1113) في الفترة: <span className="font-bold">{inputVatDebits.length}</span></div>
+              <div>عدد قيود ضريبة المخرجات (2103) في الفترة: <span className="font-bold">{outputVatCredits.length}</span></div>
+              <div>فواتير التصدير (صفرية الضريبة) لا تُنشئ قيود على 2103 بالتصميم.</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ITEM 13 — Expiry status (threshold from settings) */}
+      {selectedReport === 'expiry_status' && (
+        <div className="print-area bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900">تقرير صلاحية المخزون (Expiry Status)</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                عتبة التنبيه الحالية: <span className="font-black text-slate-800">{expiryThresholdDays}</span> يوم — تشمل الأصناف المنتهية وقاربة الانتهاء (تُحفظ في إعدادات النظام وتنعكس على هذا التقرير وبطاقة لوحة التحكم)
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!thresholdEditing ? (
+                <button
+                  onClick={() => {
+                    setThresholdInput(String(expiryThresholdDays));
+                    setThresholdMessage(null);
+                    setThresholdEditing(true);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[11px] shadow-sm"
+                >
+                  ضبط العتبة
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min={1}
+                    max={3650}
+                    value={thresholdInput}
+                    onChange={(e) => setThresholdInput(e.target.value)}
+                    className="w-20 p-1.5 rounded-xl bg-white border border-amber-300 text-xs font-mono text-center"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => {
+                      const days = Number(thresholdInput);
+                      const res = SettingsService.setExpiryWarningDays({
+                        days,
+                        userId: 'usr-admin',
+                        userName: 'المشرف العام (Admin)',
+                      });
+                      if (!res.success) {
+                        setThresholdMessage(res.error || 'تعذر حفظ العتبة');
+                        return;
+                      }
+                      setThresholdEditing(false);
+                      setThresholdMessage(`تم حفظ العتبة ${res.value} يوم وتطبيقها على التنبيهات`);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px]"
+                  >
+                    حفظ
+                  </button>
+                  <button
+                    onClick={() => setThresholdEditing(false)}
+                    className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-[11px]"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={() => onNavigateTab?.('inventory')}
+                className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-[11px]"
+              >
+                شاشة المخزون
+              </button>
+            </div>
+          </div>
+          {thresholdMessage && (
+            <div className={`px-4 py-2 text-[11px] font-bold border-b ${thresholdMessage.includes('تعذر') ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+              {thresholdMessage}
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-xs">
+              <thead className="bg-slate-100 text-slate-700 font-bold">
+                <tr>
+                  <th className="p-3">الصنف</th>
+                  <th className="p-3">التشغيلة</th>
+                  <th className="p-3">المستودع</th>
+                  <th className="p-3 text-center">الكمية</th>
+                  <th className="p-3">تاريخ الانتهاء</th>
+                  <th className="p-3 text-center">الأيام المتبقية</th>
+                  <th className="p-3 text-center">الحالة</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {expiryRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-slate-400">
+                      لا توجد أصناف منتهية أو قاربة على الانتهاء خلال {expiryThresholdDays} يوم
+                    </td>
+                  </tr>
+                ) : (
+                  expiryRows.map(b => (
+                    <tr key={b.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-bold text-slate-900">{b.itemNameAr}</td>
+                      <td className="p-3 font-mono text-slate-600">{b.batchNumber}</td>
+                      <td className="p-3 text-slate-600">{b.warehouseNameAr}</td>
+                      <td className="p-3 text-center font-mono">{b.quantity}</td>
+                      <td className="p-3 font-mono text-slate-600">{b.expiryDate}</td>
+                      <td className="p-3 text-center font-mono font-bold">
+                        <span className={b.daysUntilExpiry <= 0 ? 'text-rose-600' : b.daysUntilExpiry <= 7 ? 'text-amber-600' : 'text-slate-700'}>
+                          {b.daysUntilExpiry <= 0 ? 'منتهي' : b.daysUntilExpiry}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                          b.daysUntilExpiry <= 0
+                            ? 'bg-rose-100 text-rose-800'
+                            : b.daysUntilExpiry <= expiryThresholdDays
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {b.daysUntilExpiry <= 0 ? 'منتهي الصلاحية' : 'قارب الانتهاء'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ITEM 7 — Raw-material cost & usage deviation */}
+      {selectedReport === 'raw_material_variance' && (
+        <div className="print-area bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900">تقرير انحراف الخامات (Raw Material Variance)</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                انحراف سعر الوحدة (معيارية مقابل التكلفة الدفترية الفعلية على الرصيد) وانحراف الاستهلاك (المصروف الفعلي مقابل المخطط المحتسب من وصفة الـ BOM المجمدة لكل أمر إنتاج غير ملغى)
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                الكميات المصروفة فعليًا فقط هي الأساس — الخامات التي لم تُصرف لأوامر إنتاج لا تحتسب هنا إطلاقًا
+              </p>
+            </div>
+            <button
+              onClick={() => onNavigateTab?.('manufacturing')}
+              className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-[11px]"
+            >
+              شاشة التصنيع
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-xs">
+              <thead className="bg-slate-100 text-slate-700 font-bold">
+                <tr>
+                  <th className="p-3">الصنف</th>
+                  <th className="p-3">الوحدة</th>
+                  <th className="p-3 text-center">الرصيد</th>
+                  <th className="p-3 text-left">معيارية</th>
+                  <th className="p-3 text-left">فعلية (دفتر)</th>
+                  <th className="p-3 text-left">فرق/وحدة</th>
+                  <th className="p-3 text-left">انحراف سعر الرصيد</th>
+                  <th className="p-3 text-center">مستهلك فعلي / مخطط</th>
+                  <th className="p-3 text-left">قيمة انحراف الاستخدام</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rawMaterialRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-12 text-center text-slate-400">
+                      لا توجد خامات برصيد أو حركة استهلكان مسجلة
+                    </td>
+                  </tr>
+                ) : (
+                  rawMaterialRows.map(r => (
+                    <tr key={r.item.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-bold text-slate-900">
+                        {r.item.nameAr}
+                        <span className="block text-[10px] font-mono text-slate-400">{r.item.code}</span>
+                      </td>
+                      <td className="p-3 text-slate-600">{db.units.find(u => u.id === r.item.baseUnitId)?.nameAr || ''}</td>
+                      <td className="p-3 text-center font-mono">{r.qty}</td>
+                      <td className="p-3 text-left font-mono text-slate-600">{r.standardUnit.toFixed(2)}</td>
+                      <td className="p-3 text-left font-mono text-slate-800">{r.actualUnit.toFixed(2)}</td>
+                      <td className="p-3 text-left font-mono font-bold">
+                        <span className={r.priceDeltaUnit === 0 ? 'text-slate-500' : r.priceDeltaUnit > 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                          {r.priceDeltaUnit > 0 ? '+' : ''}{r.priceDeltaUnit.toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="p-3 text-left font-mono font-black">
+                        <span className={r.stockPriceDeviation === 0 ? 'text-slate-500' : r.stockPriceDeviation > 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                          {r.stockPriceDeviation > 0 ? '+' : ''}{r.stockPriceDeviation.toFixed(2)} ج.م
+                        </span>
+                      </td>
+                      <td className="p-3 text-center font-mono text-slate-700">
+                        {r.issuedQty} / {r.plannedQty}
+                      </td>
+                      <td className="p-3 text-left font-mono font-bold">
+                        <span className={r.usageDeltaValue === 0 ? 'text-slate-500' : r.usageDeltaValue > 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                          {r.usageDeltaValue > 0 ? '+' : ''}{r.usageDeltaValue.toFixed(2)} ج.م
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {rawMaterialRows.length > 0 && (
+                <tfoot className="bg-slate-100 font-black text-slate-900">
+                  <tr>
+                    <td colSpan={6} className="p-3">إجمالي الانحرافات</td>
+                    <td className="p-3 text-left font-mono">
+                      {rawMaterialRows.reduce((s, r) => s + r.stockPriceDeviation, 0).toFixed(2)} ج.م
+                    </td>
+                    <td className="p-3 text-center">—</td>
+                    <td className="p-3 text-left font-mono">
+                      {rawMaterialRows.reduce((s, r) => s + r.usageDeltaValue, 0).toFixed(2)} ج.م
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ITEM 10-11 — REAL production differences (no invented 50% / 10% values) */}
+      {selectedReport === 'material_differences' && (
+        <div className="print-area bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-4 bg-amber-50 border-b border-amber-200">
+            <h3 className="font-bold text-sm text-slate-900">تقرير فروق الإنتاج الحقيقية (Real Differences)</h3>
+            <p className="text-[11px] text-amber-800 mt-0.5 font-semibold">
+              قيود فعلية فقط: المعيب والهالك يظهران ككميات بلا قيمة مختلقة (لا 50% للمعيب ولا 10% تلقائي للهالك)، والاسترداد فقط يُقيَّم بتكلفة مستندية فعلية
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-xs">
+              <thead className="bg-slate-100 text-slate-700 font-bold">
+                <tr>
+                  <th className="p-3">أمر الإنتاج</th>
+                  <th className="p-3">المنتج</th>
+                  <th className="p-3 text-center">مخطط</th>
+                  <th className="p-3 text-center">منتج فعلي</th>
+                  <th className="p-3 text-center">فرق الكمية</th>
+                  <th className="p-3 text-center">معيب (كمية)</th>
+                  <th className="p-3 text-center">هالك (كمية)</th>
+                  <th className="p-3 text-left">قيمة الهالك الدفترية</th>
+                  <th className="p-3 text-left">استرداد خامات (قيمة فعلية)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {productionOrderRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-12 text-center text-slate-400">
+                      لا توجد أوامر إنتاج مسجلة بعد
+                    </td>
+                  </tr>
+                ) : (
+                  productionOrderRows.map(r => (
+                    <tr key={r.order.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-slate-900">{r.order.orderNumber}</td>
+                      <td className="p-3 font-bold text-slate-800">{r.product?.nameAr || r.order.productId}</td>
+                      <td className="p-3 text-center font-mono">{r.order.plannedQuantity}</td>
+                      <td className="p-3 text-center font-mono font-bold">{r.order.producedQuantity}</td>
+                      <td className="p-3 text-center font-mono font-bold">
+                        <span className={r.quantityGap === 0 ? 'text-slate-500' : r.quantityGap > 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                          {r.quantityGap > 0 ? `+${r.quantityGap}` : r.quantityGap}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center font-mono text-amber-700">{r.order.defectiveQuantity}</td>
+                      <td className="p-3 text-center font-mono text-rose-700">{r.order.scrapQuantity}</td>
+                      <td className="p-3 text-left font-mono font-bold text-slate-500">0.00 ج.م</td>
+                      <td className="p-3 text-left font-mono font-bold text-emerald-700">
+                        {r.recoveryValue.toFixed(2)} ج.م
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {productionOrderRows.length > 0 && (
+                <tfoot className="bg-slate-100 font-black text-slate-900">
+                  <tr>
+                    <td colSpan={2} className="p-3">الإجمالي</td>
+                    <td className="p-3 text-center font-mono">{productionOrderRows.reduce((s, r) => s + r.order.plannedQuantity, 0)}</td>
+                    <td className="p-3 text-center font-mono">{productionOrderRows.reduce((s, r) => s + r.order.producedQuantity, 0)}</td>
+                    <td className="p-3 text-center font-mono">{productionOrderRows.reduce((s, r) => s + r.quantityGap, 0)}</td>
+                    <td className="p-3 text-center font-mono">{productionOrderRows.reduce((s, r) => s + r.order.defectiveQuantity, 0)}</td>
+                    <td className="p-3 text-center font-mono">{productionOrderRows.reduce((s, r) => s + r.order.scrapQuantity, 0)}</td>
+                    <td className="p-3 text-left font-mono">0.00 ج.م</td>
+                    <td className="p-3 text-left font-mono">{productionOrderRows.reduce((s, r) => s + r.recoveryValue, 0).toFixed(2)} ج.م</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ITEM 18 — Production orders report */}
+      {selectedReport === 'production_orders' && (
+        <div className="print-area bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900">تقرير أوامر الإنتاج (Production Orders Report)</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                شامل كل أوامر التشغيل: الكمية المخططة والمنتجة والهالك ونسبة الإنتاج وال حالة الإغلاق (كامل / جزئي بسجل سبب)
+              </p>
+            </div>
+            <button
+              onClick={() => onNavigateTab?.('manufacturing')}
+              className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-[11px]"
+            >
+              فتح شاشة التصنيع
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-xs">
+              <thead className="bg-slate-100 text-slate-700 font-bold">
+                <tr>
+                  <th className="p-3">رقم الأمر</th>
+                  <th className="p-3">المنتج</th>
+                  <th className="p-3 text-center">مخطط</th>
+                  <th className="p-3 text-center">منتج</th>
+                  <th className="p-3 text-center">متبقٍ</th>
+                  <th className="p-3 text-center">معيب</th>
+                  <th className="p-3 text-center">هالك</th>
+                  <th className="p-3 text-center">نسبة الإنتاج</th>
+                  <th className="p-3 text-center">الحالة</th>
+                  <th className="p-3">البدء</th>
+                  <th className="p-3">الاستحقاق</th>
+                  <th className="p-3">الإغلاق</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {productionOrderRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="py-12 text-center text-slate-400">
+                      لا توجد أوامر إنتاج مسجلة بعد
+                    </td>
+                  </tr>
+                ) : (
+                  productionOrderRows.map(r => (
+                    <tr key={r.order.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-slate-900">{r.order.orderNumber}</td>
+                      <td className="p-3 font-bold text-slate-800">{r.product?.nameAr || r.order.productId}</td>
+                      <td className="p-3 text-center font-mono">{r.order.plannedQuantity}</td>
+                      <td className="p-3 text-center font-mono font-bold text-slate-900">{r.order.producedQuantity}</td>
+                      <td className="p-3 text-center font-mono text-slate-600">{r.order.remainingQuantity}</td>
+                      <td className="p-3 text-center font-mono text-amber-700">{r.order.defectiveQuantity}</td>
+                      <td className="p-3 text-center font-mono text-rose-700">{r.order.scrapQuantity}</td>
+                      <td className="p-3 text-center font-mono font-bold">
+                        <span className={r.yieldPct >= 100 ? 'text-emerald-600' : r.yieldPct >= 80 ? 'text-amber-600' : 'text-rose-600'}>
+                          {r.yieldPct.toFixed(1)}%
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                          r.order.status === 'completed'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : r.order.status === 'in_progress'
+                              ? 'bg-amber-100 text-amber-800'
+                              : r.order.status === 'cancelled'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {ORDER_STATUS_AR[r.order.status] || r.order.status}
+                          {r.order.closeMode === 'partial' ? ' — إغلاق جزئي' : ''}
+                        </span>
+                      </td>
+                      <td className="p-3 font-mono text-slate-600">{r.order.startDate}</td>
+                      <td className="p-3 font-mono text-slate-600">{r.order.expectedCompletionDate}</td>
+                      <td className="p-3 font-mono text-slate-600">{r.order.actualCompletionDate || '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {productionOrderRows.length > 0 && (
+                <tfoot className="bg-slate-100 font-black text-slate-900">
+                  <tr>
+                    <td colSpan={2} className="p-3">الإجمالي</td>
+                    <td className="p-3 text-center font-mono">{productionOrderRows.reduce((s, r) => s + r.order.plannedQuantity, 0)}</td>
+                    <td className="p-3 text-center font-mono">{productionOrderRows.reduce((s, r) => s + r.order.producedQuantity, 0)}</td>
+                    <td className="p-3 text-center font-mono">{productionOrderRows.reduce((s, r) => s + r.order.remainingQuantity, 0)}</td>
+                    <td className="p-3 text-center font-mono">{productionOrderRows.reduce((s, r) => s + r.order.defectiveQuantity, 0)}</td>
+                    <td className="p-3 text-center font-mono">{productionOrderRows.reduce((s, r) => s + r.order.scrapQuantity, 0)}</td>
+                    <td colSpan={5} />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
