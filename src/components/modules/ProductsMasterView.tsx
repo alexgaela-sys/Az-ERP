@@ -199,7 +199,7 @@ export const ProductsMasterView: React.FC = () => {
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-black text-slate-900">سجل الأصناف والمنتجات التامة (Product Master)</h2>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold border border-amber-200">
-              SnakDip Catalog
+              Product Catalog
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">

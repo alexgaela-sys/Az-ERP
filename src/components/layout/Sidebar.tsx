@@ -156,12 +156,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Clean text-based brand mark (no fake logo) */}
             <div className="w-10 h-10 rounded-xl bg-brand-500 flex items-center justify-center shrink-0 shadow-brand">
               <span className="font-black text-lg leading-none tracking-tight">
-                S<span className="text-ink-950">D</span>
+                Y<span className="text-ink-950">Z</span>
               </span>
             </div>
             <div className="min-w-0">
               <h1 className="text-base font-black text-white tracking-tight leading-tight">
-                SnakDip <span className="text-brand-400">ERP</span>
+                YZ <span className="text-brand-400">ERP</span>
               </h1>
               <p className="text-[11px] text-cream-400 font-semibold truncate">
                 نظام إدارة الموارد والمصانع
@@ -181,7 +181,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="px-4 py-2 bg-ink-950/60 border-b border-ink-700/80 flex items-center justify-between gap-2 text-[11px] text-cream-300">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-400 shrink-0" />
-            <span className="truncate font-semibold">شركة SnakDip للصناعات الغذائية</span>
+            <span className="truncate font-semibold">YZ ERP</span>
           </div>
           <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-ink-800 text-cream-300 border border-ink-700 font-mono">
             EGP / USD
@@ -279,7 +279,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           <div className="text-[10px] text-center text-cream-600 pt-1.5 border-t border-ink-700/60">
-            SnakDip ERP v2.0 • قاعدة بيانات نشطة
+            YZ ERP v1.0 • قاعدة بيانات نشطة
           </div>
         </div>
       </aside>

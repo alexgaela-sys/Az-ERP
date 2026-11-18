@@ -43,12 +43,12 @@ export function App() {
 
   // Persist the last opened module so refreshes keep context (still permission-gated)
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
-    const saved = localStorage.getItem('snakdip_erp_active_tab') as NavTab | null;
+    const saved = localStorage.getItem('yz_erp_active_tab') as NavTab | null;
     return saved || 'dashboard';
   });
 
   useEffect(() => {
-    localStorage.setItem('snakdip_erp_active_tab', activeTab);
+    localStorage.setItem('yz_erp_active_tab', activeTab);
   }, [activeTab]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   // ITEM 18 — contextual sub-target (e.g. dashboard card → a specific report).

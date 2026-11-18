@@ -37,7 +37,7 @@ const Shell: React.FC<{ title: string; children: React.ReactNode }> = ({ title, 
     <div className={card}>
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-black">
-          SnakDip <span className="text-brand-600">ERP</span>
+          YZ <span className="text-brand-600">ERP</span>
         </h1>
         <p className="text-sm font-bold text-cream-800">{title}</p>
       </div>

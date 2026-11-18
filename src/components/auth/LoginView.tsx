@@ -39,7 +39,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       className="min-h-screen bg-cream-100 flex flex-col justify-center items-center p-4 sm:p-6 font-sans text-ink-900 antialiased relative overflow-hidden"
       dir="rtl"
     >
-      {/* SnakDip brand ambient shapes */}
+      {/* YZ brand ambient shapes */}
       <div className="absolute top-1/4 -right-24 w-96 h-96 bg-brand-100 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 -left-24 w-96 h-96 bg-cream-300/60 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-0 left-0 w-72 h-72 bg-brand-50 rounded-full blur-3xl pointer-events-none" />
@@ -49,18 +49,18 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         <div className="text-center space-y-3">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-500 shadow-brand border border-brand-400/60">
             <span className="font-black text-2xl text-white tracking-tight">
-              S<span className="text-ink-950">D</span>
+              Y<span className="text-ink-950">Z</span>
             </span>
           </div>
           <div>
             <h1 className="text-2xl sm:text-3xl font-black text-ink-900 tracking-tight">
-              SnakDip <span className="text-brand-600">ERP</span>
+              YZ <span className="text-brand-600">ERP</span>
             </h1>
             <p className="text-sm font-bold text-cream-800 mt-0.5">
-              نظام سناك ديب لإدارة الموارد والمصانع
+              نظام إدارة الموارد والمصانع
             </p>
             <p className="text-xs text-cream-600 mt-1 font-medium">
-              شركة SnakDip للصناعات الغذائية — النسخة الرئيسية
+              YZ ERP — النسخة الرئيسية
             </p>
           </div>
 

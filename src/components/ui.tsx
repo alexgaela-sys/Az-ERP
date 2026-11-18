@@ -1,4 +1,4 @@
-// Shared UI primitives & design-system helpers for SnakDip ERP.
+// Shared UI primitives & design-system helpers for YZ ERP.
 // Presentation-only: no business logic, no engine calls.
 
 import React from 'react';

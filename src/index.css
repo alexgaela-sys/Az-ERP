@@ -1,27 +1,27 @@
 @import "tailwindcss";
 
 /* ============================================================
-   SNAKDIP ERP — Brand Design System
-   Derived from snakdip.com: warm red-orange brand accents on a
-   clean cream base, playful but enterprise-grade, Arabic-first.
+   YZ ERP — Brand Design System
+   A calm, professional blue accent (matching the standard report/
+   chart palette) on a clean neutral base, enterprise-grade, Arabic-first.
    ============================================================ */
 
 @theme {
   /* Typography */
   --font-sans: "Cairo", "Tajawal", ui-sans-serif, system-ui, sans-serif;
 
-  /* SnakDip brand accent (tomato red-orange) */
-  --color-brand-50: #fff3f0;
-  --color-brand-100: #ffe1d9;
-  --color-brand-200: #ffc3b4;
-  --color-brand-300: #ff9d86;
-  --color-brand-400: #ff6f4f;
-  --color-brand-500: #fa4a1f;
-  --color-brand-600: #eb320e;
-  --color-brand-700: #c62509;
-  --color-brand-800: #9d200e;
-  --color-brand-900: #7e1f10;
-  --color-brand-950: #440b04;
+  /* YZ brand accent (report-palette blue) */
+  --color-brand-50: #eff6fe;
+  --color-brand-100: #cde2fb;
+  --color-brand-200: #9ec5f4;
+  --color-brand-300: #6da7ec;
+  --color-brand-400: #3987e5;
+  --color-brand-500: #256abf;
+  --color-brand-600: #1c5cab;
+  --color-brand-700: #184f95;
+  --color-brand-800: #104281;
+  --color-brand-900: #0d366b;
+  --color-brand-950: #081f3d;
 
   /* SnakDip warm neutrals (cream paper, cocoa ink) */
   --color-cream-50: #fffdf9;
@@ -57,20 +57,20 @@
   --color-slate-900: #1c1a19;
   --color-slate-950: #131211;
 
-  --color-amber-50: #fff3f0;
-  --color-amber-100: #ffe1d9;
-  --color-amber-200: #ffc3b4;
-  --color-amber-300: #ff9d86;
-  --color-amber-400: #ff6f4f;
-  --color-amber-500: #fa4a1f;
-  --color-amber-600: #eb320e;
-  --color-amber-700: #c62509;
-  --color-amber-800: #9d200e;
-  --color-amber-900: #7e1f10;
-  --color-amber-950: #440b04;
+  --color-amber-50: #fdf3ec;
+  --color-amber-100: #fae0cd;
+  --color-amber-200: #f5c097;
+  --color-amber-300: #f0a066;
+  --color-amber-400: #eb6834;
+  --color-amber-500: #d95926;
+  --color-amber-600: #c04d1f;
+  --color-amber-700: #9e3f19;
+  --color-amber-800: #7e3214;
+  --color-amber-900: #65280f;
+  --color-amber-950: #391607;
 
   /* Brand shadow */
-  --shadow-brand: 0 8px 24px -8px rgba(250, 74, 31, 0.35);
+  --shadow-brand: 0 8px 24px -8px rgba(37, 106, 191, 0.35);
   --shadow-card: 0 1px 2px rgba(54, 36, 22, 0.05), 0 4px 16px -6px rgba(54, 36, 22, 0.08);
 
   /* Animations */

@@ -205,7 +205,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base font-black text-white">
-                  لوحة التحكم — SnakDip ERP
+                  لوحة التحكم — YZ ERP
                 </h3>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">
                   بيانات فعلية دقيقة
@@ -499,7 +499,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
           <div className="flex items-center justify-between pb-3 border-b border-cream-200">
             <div className="flex items-center gap-2">
               <ShoppingCart className="w-5 h-5 text-brand-600" />
-              <h3 className="font-black text-ink-900 text-sm">أعلى منتجات SnakDip مبيعاً (Top 5)</h3>
+              <h3 className="font-black text-ink-900 text-sm">أعلى المنتجات مبيعاً (Top 5)</h3>
             </div>
             <button
               onClick={() => onNavigateTab('items')}

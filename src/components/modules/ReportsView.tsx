@@ -531,7 +531,7 @@ export const ReportsView: React.FC<{
       {/* 2. Income Statement - same layout as the company's monthly sheet */}
       {selectedReport === 'income_statement' && (() => {
         const is = buildIncomeStatement(db, { allPeriods, from: fromDate, to: toDate });
-        const title = incomeStatementTitle(allPeriods, fromDate, toDate, 'سناك دب');
+        const title = incomeStatementTitle(allPeriods, fromDate, toDate, 'YZ');
         const target = Math.max(0, Math.round(is.profitBefore * 10) / 100);
         const stale = is.profitBefore > 0 && Math.abs(is.provision - target) > 1;
         return (
