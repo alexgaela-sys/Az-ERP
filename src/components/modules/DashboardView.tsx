@@ -8,6 +8,7 @@ import { erpDb } from '../../services/db';
 import { InventoryEngine } from '../../services/inventory';
 import { SettingsService } from '../../services/settings';
 import { PageHeader, SectionCard, EmptyState, formatEGP, formatNum } from '../ui';
+import { MonthlyRevenueChart } from '../charts/MonthlyRevenueChart';
 
 interface DashboardViewProps {
   /** ITEM 18 — optional sub-target lets cards deep-link into a specific report. */
@@ -137,8 +138,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
     return months;
   }, [db.salesInvoices, now]);
 
-  const monthlyMax = Math.max(1, ...monthlySeries.map(m => Math.max(m.revenue, m.cogs)));
-
   // Inventory value per warehouse (from perpetual batches)
   const warehouseSeries = React.useMemo(() => {
     const whMap = new Map(db.warehouses.map(w => [w.id, w.nameAr]));
@@ -199,7 +198,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
           <div className="flex items-start sm:items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-brand-500 flex items-center justify-center shrink-0 shadow-brand">
               <span className="font-black text-lg text-white tracking-tight">
-                S<span className="text-ink-950">D</span>
+                Y<span className="text-ink-950">Z</span>
               </span>
             </div>
             <div>
@@ -388,33 +387,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
               icon={BarChart3}
             />
           ) : (
-            <div className="flex items-end justify-between gap-3 h-48" dir="ltr">
-              {monthlySeries.map(m => (
-                <div key={m.key} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
-                  <div className="w-full max-w-14 flex items-end justify-center gap-1 h-40">
-                    <div
-                      className="flex-1 rounded-t-lg bg-brand-500/90 min-h-[3px] transition-all"
-                      style={{ height: `${Math.max(2, (m.revenue / monthlyMax) * 100)}%` }}
-                      title={`إيرادات ${formatEGP(m.revenue)}`}
-                    />
-                    <div
-                      className="flex-1 rounded-t-lg bg-cream-400 min-h-[3px] transition-all"
-                      style={{ height: `${Math.max(2, (m.cogs / monthlyMax) * 100)}%` }}
-                      title={`تكلفة ${formatEGP(m.cogs)}`}
-                    />
-                  </div>
-                  <span className="text-[10px] font-bold text-cream-700">{m.label}</span>
-                </div>
-              ))}
-            </div>
+            <MonthlyRevenueChart data={monthlySeries} />
           )}
           {!monthlySeries.every(m => m.revenue === 0) && (
             <div className="flex items-center gap-4 mt-3 text-[11px] font-bold text-cream-700 border-t border-cream-100 pt-3">
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-sm bg-brand-500/90" /> الإيرادات
+                <span className="w-3 h-0.5 rounded bg-brand-500 inline-block" /> الإيرادات
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-sm bg-cream-400" /> التكلفة المباشرة (COGS)
+                <span className="w-3 h-0.5 rounded bg-amber-500 inline-block" /> التكلفة المباشرة (COGS)
               </span>
             </div>
           )}
