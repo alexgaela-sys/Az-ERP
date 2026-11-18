@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createEmptyDatabase,
+  createDemoManufacturingDatabase,
   ERPDatabaseSchema,
   normalizeStoredDatabase,
   readLegacyLocalDatabase,
@@ -155,9 +156,17 @@ const FirstTimeSetup: React.FC<SetupProps> = ({ onImport, error }) => {
 
       <div className="rounded-xl border border-cream-300 p-3 space-y-2">
         <p className="text-sm font-bold">البدء ببيانات أساسية جديدة</p>
-        <p className="text-xs text-cream-800">دليل الحسابات والأصناف والمخازن الافتراضية فقط، بدون أي حركات.</p>
-        <button className={secondary} onClick={() => onImport({ label: 'البيانات الأساسية الافتراضية', db: createEmptyDatabase() })}>
+        <p className="text-xs text-cream-800">دليل الحسابات والمخازن الافتراضية فقط — بدون أصناف أو موردين أو حركات.</p>
+        <button className={primary} onClick={() => onImport({ label: 'البيانات الأساسية الافتراضية', db: createEmptyDatabase() })}>
           بدء نظام جديد
+        </button>
+      </div>
+
+      <div className="rounded-xl border border-dashed border-cream-300 p-3 space-y-2">
+        <p className="text-sm font-bold">بيانات تجريبية (مصنع رقائق — للاستكشاف فقط)</p>
+        <p className="text-xs text-cream-800">كتالوج كامل وهمي: 11 منتج، وصفات تصنيع، موردين، مندوب مبيعات — لتجربة شاشات النظام. لا تُستخدم لنشاط حقيقي.</p>
+        <button className={secondary} onClick={() => onImport({ label: 'بيانات تجريبية (مصنع رقائق)', db: createDemoManufacturingDatabase() })}>
+          تحميل بيانات تجريبية
         </button>
       </div>
 

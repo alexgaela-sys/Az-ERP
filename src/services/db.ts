@@ -168,16 +168,16 @@ const STORAGE_KEY = 'abdullah_erp_db_v1';
 
 export const INITIAL_COMPANY: Company = {
   id: 'comp-1',
-  code: 'ABD-EG',
-  nameAr: 'شركة عبد الله للصناعات الغذائية (ش.م.م)',
-  nameEn: 'Abdullah Food Industries S.A.E.',
-  taxNumber: '394-821-445',
-  commercialRegister: '182944 - القاهرة',
-  address: 'المنطقة الصناعية الثالثة، السادس من أكتوبر، الجيزة، مصر',
-  phone: '+20 2 38330000',
+  code: 'YZ-01',
+  nameAr: '',
+  nameEn: '',
+  taxNumber: '',
+  commercialRegister: '',
+  address: '',
+  phone: '',
   baseCurrency: 'EGP',
   exportCurrency: 'USD',
-  currentUsdExchangeRate: 48.50,
+  currentUsdExchangeRate: 1,
   // Optional contact/identity fields — empty until the administrator supplies them.
   logoDataUrl: '',
   email: '',
@@ -186,6 +186,16 @@ export const INITIAL_COMPANY: Company = {
   contactPhone: '',
 };
 
+// NOTE (scope limit — revisit with the onboarding wizard, task #21): these
+// 5 warehouse IDs ('wh-raw' / 'wh-local' / 'wh-export' / 'wh-damaged' / 'wh-scrap')
+// are hardcoded as defaults and accounting-routing keys in dozens of places
+// across workflows.ts, manufacturing.ts, pricing.ts and most view components —
+// not only in demo/seed data. Shipping a single generic warehouse here would
+// silently break sales/purchase/inventory posting for every new company until
+// that routing is refactored to a dynamic "default warehouse" concept. Until
+// that refactor, every company (generic or demo) gets this same manufacturing-
+// flow warehouse set; only the manager names (which WERE fake people) are
+// genericized. Items/BOMs/suppliers remain demo-only (see createEmptyDatabase).
 export const INITIAL_WAREHOUSES: Warehouse[] = [
   {
     id: 'wh-raw',
@@ -193,7 +203,7 @@ export const INITIAL_WAREHOUSES: Warehouse[] = [
     nameAr: 'مستودع المواد الخام ومواد التعبئة',
     type: 'raw_materials',
     location: 'عنبر 1 - المجمع الصناعي',
-    managerName: 'م. أحمد فؤاد',
+    managerName: '',
     active: true,
   },
   {
@@ -202,7 +212,7 @@ export const INITIAL_WAREHOUSES: Warehouse[] = [
     nameAr: 'مستودع المنتج التام المحلي',
     type: 'local_finished',
     location: 'عنبر 2 - التوزيع المحلي',
-    managerName: 'أ. محمود عزت',
+    managerName: '',
     active: true,
   },
   {
@@ -211,7 +221,7 @@ export const INITIAL_WAREHOUSES: Warehouse[] = [
     nameAr: 'مستودع المنتج التام للتصدير',
     type: 'export_finished',
     location: 'عنبر 3 - رصيف الشحن الخارجي',
-    managerName: 'أ. تامر رضوان',
+    managerName: '',
     active: true,
   },
   {
@@ -220,7 +230,7 @@ export const INITIAL_WAREHOUSES: Warehouse[] = [
     nameAr: 'مستودع التوالف والمعيب',
     type: 'damaged',
     location: 'عنبر العزل والفحص',
-    managerName: 'م. طارق كمال',
+    managerName: '',
     active: true,
   },
   {
@@ -229,7 +239,7 @@ export const INITIAL_WAREHOUSES: Warehouse[] = [
     nameAr: 'مستودع الهالك / السكراب',
     type: 'scrap',
     location: 'ساحة السكراب والمخلفات',
-    managerName: 'أ. عادل سامي',
+    managerName: '',
     active: true,
   },
 ];
@@ -290,8 +300,8 @@ export const INITIAL_ACCOUNTS: Account[] = [
   { id: 'acc-1', code: '1', nameAr: 'الأصول', nameEn: 'Assets', category: 'Assets', isHeader: true, level: 1, currentBalance: 0 },
   { id: 'acc-11', code: '11', nameAr: 'الأصول المتداولة', nameEn: 'Current Assets', category: 'Assets', isHeader: true, parentId: 'acc-1', level: 2, currentBalance: 0 },
   { id: 'acc-1101', code: '1101', nameAr: 'الخزينة الرئيسية النقدية', nameEn: 'Main Cash Treasury', category: 'Assets', isHeader: false, parentId: 'acc-11', level: 3, currentBalance: 0 },
-  { id: 'acc-1102', code: '1102', nameAr: 'بنك مصر - حساب جاري بالجنيه', nameEn: 'Banque Misr - EGP', category: 'Assets', isHeader: false, parentId: 'acc-11', level: 3, currentBalance: 0 },
-  { id: 'acc-1103', code: '1103', nameAr: 'البنك التجاري الدولي CIB - دولار', nameEn: 'CIB - USD Account', category: 'Assets', isHeader: false, parentId: 'acc-11', level: 3, currentBalance: 0 },
+  { id: 'acc-1102', code: '1102', nameAr: 'البنك الرئيسي - حساب جاري بالجنيه', nameEn: 'Main Bank - EGP', category: 'Assets', isHeader: false, parentId: 'acc-11', level: 3, currentBalance: 0 },
+  { id: 'acc-1103', code: '1103', nameAr: 'بنك التصدير - حساب بالدولار', nameEn: 'Export Bank - USD', category: 'Assets', isHeader: false, parentId: 'acc-11', level: 3, currentBalance: 0 },
   { id: 'acc-1104', code: '1104', nameAr: 'أوراق قبض (شيكات تحت التحصيل)', nameEn: 'Cheques Under Collection', category: 'Assets', isHeader: false, parentId: 'acc-11', level: 3, currentBalance: 0 },
   { id: 'acc-1105', code: '1105', nameAr: 'عملاء تجاريون - محلي', nameEn: 'Trade Receivables - Local', category: 'Assets', isHeader: false, parentId: 'acc-11', level: 3, currentBalance: 0 },
   { id: 'acc-1106', code: '1106', nameAr: 'عملاء تجاريون - تصدير (USD)', nameEn: 'Trade Receivables - Export', category: 'Assets', isHeader: false, parentId: 'acc-11', level: 3, currentBalance: 0 },
@@ -510,17 +520,21 @@ export const INITIAL_STANDARD_COST_RATES: StandardCostRate[] = [
   },
 ];
 
+// NOTE: only used in local/on-premise mode (createEmptyDatabase() skips this
+// entirely when CLOUD_STORAGE_MODE is true — the real admin there comes from
+// Supabase Auth + erp_members, see CloudGate / cloudIdentity.ts). This is the
+// one default account a fresh local install can log in with; change the
+// password immediately after first login (Users screen → تعديل).
 export const INITIAL_USERS: User[] = [
   {
     id: 'usr-admin',
     username: 'admin',
-    password: '12345',
-    name: 'المشرف العام (Admin)',
-    email: 'admin@abdullah-erp.com',
+    password: 'admin123',
+    name: 'المدير',
+    email: 'admin@yz-erp.local',
     role: 'Super Admin',
     active: true,
-    createdAt: '2026-09-01T08:00:00.000Z',
-    lastLogin: '2026-09-28T09:00:00.000Z',
+    createdAt: new Date().toISOString(),
   }
 ];
 
@@ -1254,9 +1268,9 @@ export const INITIAL_PRODUCTION_BOMS: { boms: BomHeader[]; bomLines: BomLine[] }
 export const INITIAL_BANK_ACCOUNTS: BankAccount[] = [
   {
     id: 'bank-1',
-    bankName: 'بنك مصر - فرع أكتوبر الصناعي',
-    accountNumber: 'EG55000200010000000349281',
-    branch: 'المنطقة الصناعية',
+    bankName: '',
+    accountNumber: '',
+    branch: '',
     currency: 'EGP',
     currentBalance: 0,
     glAccountId: 'acc-1102',
@@ -1264,9 +1278,9 @@ export const INITIAL_BANK_ACCOUNTS: BankAccount[] = [
   },
   {
     id: 'bank-2',
-    bankName: 'البنك التجاري الدولي CIB - حساب التصدير (USD)',
-    accountNumber: 'EG98001000020000000984321',
-    branch: 'فرع الدقي للشركات',
+    bankName: '',
+    accountNumber: '',
+    branch: '',
     currency: 'USD',
     currentBalance: 0,
     glAccountId: 'acc-1103',
@@ -1275,7 +1289,8 @@ export const INITIAL_BANK_ACCOUNTS: BankAccount[] = [
 ];
 
 // Clean Database initialization with configuration / master data only
-export function createEmptyDatabase(): ERPDatabaseSchema {
+export function createEmptyDatabase(options?: { demo?: boolean }): ERPDatabaseSchema {
+  const includeDemo = options?.demo === true;
   // SEED IMMUTABILITY: every seeded record is copied, never shared by reference.
   // A live database (and `resetToClean`) must never mutate the INITIAL_* constants —
   // otherwise editing company data would rewrite the "factory default" fallback
@@ -1283,19 +1298,23 @@ export function createEmptyDatabase(): ERPDatabaseSchema {
   const fresh: ERPDatabaseSchema = {
     company: { ...INITIAL_COMPANY },
     warehouses: INITIAL_WAREHOUSES.map(w => ({ ...w })),
-    items: INITIAL_PRODUCTION_ITEMS.map(i => ({ ...i })), // Pre-configured with the 11 Snack products & raw materials
+    // A brand-new company starts with NO items/BOMs/suppliers/sales reps — those
+    // are specific to one business, never a sane default for "any activity".
+    // The snack-factory catalog below is only seeded when demo data is explicitly
+    // requested (see createDemoManufacturingDatabase), e.g. for sales demos.
+    items: includeDemo ? INITIAL_PRODUCTION_ITEMS.map(i => ({ ...i })) : [],
     units: INITIAL_UNITS.map(u => ({ ...u })),
     unitConversions: INITIAL_UNIT_CONVERSIONS.map(c => ({ ...c })),
     batches: [],
-    boms: INITIAL_PRODUCTION_BOMS.boms.map(b => ({ ...b })),
-    bomLines: INITIAL_PRODUCTION_BOMS.bomLines.map(l => ({ ...l })),
+    boms: includeDemo ? INITIAL_PRODUCTION_BOMS.boms.map(b => ({ ...b })) : [],
+    bomLines: includeDemo ? INITIAL_PRODUCTION_BOMS.bomLines.map(l => ({ ...l })) : [],
     productionOrders: [],
     productionConsumptions: [],
     productionWastes: [],
     qualityInspections: [],
     customers: [],
-    suppliers: INITIAL_SUPPLIERS.map(s => ({ ...s })),
-    salesReps: INITIAL_SALES_REPS.map(r => ({ ...r })),
+    suppliers: includeDemo ? INITIAL_SUPPLIERS.map(s => ({ ...s })) : [],
+    salesReps: includeDemo ? INITIAL_SALES_REPS.map(r => ({ ...r })) : [],
     representativeCustodies: [],
     custodyMovements: [],
     salesInvoices: [],
@@ -1322,7 +1341,12 @@ export function createEmptyDatabase(): ERPDatabaseSchema {
     standardCostRates: INITIAL_STANDARD_COST_RATES.map(r => ({ ...r })),
     forecasts: [],
     accountMappings: { ...INITIAL_ACCOUNT_MAPPINGS },
-  users: INITIAL_USERS.map(u => ({ ...u })),
+  // Cloud mode: the real first user is created by CloudGate's bootstrap flow
+  // (see cloudIdentity.ts) and linked to Supabase Auth — seeding a placeholder
+  // here too would just leave a confusing, unusable duplicate "admin" record.
+  // Local/on-premise mode: there is no cloud bootstrap, so a fresh install needs
+  // at least one working local account to log in with at all.
+  users: CLOUD_STORAGE_MODE ? [] : INITIAL_USERS.map(u => ({ ...u })),
   auditLogs: [],
   exportShipments: [],
   payrollDistributions: [],
@@ -1342,7 +1366,25 @@ export function createEmptyDatabase(): ERPDatabaseSchema {
   // paths converge on identical master data, with one single source of truth
   // (the migrations) instead of names duplicated across the seed and the
   // migration — which is what let the two drift apart.
-  return applyFullChartMigration(applyEmployeeCipLoanAccountsMigration(applyWithholdingAccountMigration(applyUomMigration(applyMasterDataMigration(fresh)))));
+  // applyMasterDataMigration and applyFullChartMigration are both specific to one
+  // real business (the snack-chip product/BOM catalog, and named loan/partner
+  // accounts) — they only run for the explicit demo path, and only there, in
+  // their original position in the chain (applyUomMigration depends on the
+  // finished-product items applyMasterDataMigration adds). The other three are
+  // generic bookkeeping scaffolding (custody/CIP/loan account shells, withholding
+  // tax account, unit-of-measure normalization) and run for every company.
+  const afterMasterData = includeDemo ? applyMasterDataMigration(fresh) : fresh;
+  const afterGenericMigrations = applyEmployeeCipLoanAccountsMigration(applyWithholdingAccountMigration(applyUomMigration(afterMasterData)));
+  return includeDemo ? applyFullChartMigration(afterGenericMigrations) : afterGenericMigrations;
+}
+
+/**
+ * The full snack-chip manufacturing showcase (11 products, BOMs, real-looking
+ * suppliers, sales rep, and the extended chart of accounts) — for exploring the
+ * product or running a sales demo. Never the default for a new real company.
+ */
+export function createDemoManufacturingDatabase(): ERPDatabaseSchema {
+  return createEmptyDatabase({ demo: true });
 }
 
 /**
