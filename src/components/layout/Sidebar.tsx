@@ -4,6 +4,7 @@ import {
   ShieldCheck, Calculator, Users, Truck, UserCheck, Globe,
   Wallet, Landmark, FileCheck2, Receipt, BookOpen, BarChart3,
   KeyRound, Settings, History, LogOut, Package, ChevronDown, X,
+  Banknote,
 } from 'lucide-react';
 import { User } from '../../types/erp';
 import { PermissionService } from '../../services/permissions';
@@ -12,6 +13,7 @@ export type NavTab =
   | 'dashboard'
   | 'items'
   | 'sales'
+  | 'cashier'
   | 'purchasing'
   | 'inventory'
   | 'manufacturing'
@@ -55,6 +57,7 @@ const NAV_GROUPS: Array<{
     titleAr: 'المبيعات',
     items: [
       { id: 'sales', label: 'فواتير المبيعات', icon: ShoppingCart },
+      { id: 'cashier', label: 'شاشة الكاشير', icon: Banknote },
       { id: 'customers', label: 'العملاء', icon: Users },
       { id: 'representatives', label: 'المندوبون والعهد', icon: UserCheck },
     ],

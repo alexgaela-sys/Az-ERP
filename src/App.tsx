@@ -13,6 +13,7 @@ import { LoginView } from './components/auth/LoginView';
 import { DashboardView } from './components/modules/DashboardView';
 import { ProductsMasterView } from './components/modules/ProductsMasterView';
 import { SalesView } from './components/modules/SalesView';
+import { CashierView } from './components/modules/CashierView';
 import { PurchasingView } from './components/modules/PurchasingView';
 import { InventoryView } from './components/modules/InventoryView';
 import { ManufacturingView } from './components/modules/ManufacturingView';
@@ -205,6 +206,7 @@ export function App() {
           )}
           {activeTab === 'items' && <ProductsMasterView />}
           {activeTab === 'sales' && <SalesView />}
+          {activeTab === 'cashier' && <CashierView />}
           {activeTab === 'purchasing' && <PurchasingView />}
           {activeTab === 'inventory' && <InventoryView />}
           {activeTab === 'manufacturing' && <ManufacturingView />}

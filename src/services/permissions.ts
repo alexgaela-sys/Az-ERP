@@ -17,7 +17,7 @@ const AUTHORIZATION_SUPER_ADMIN: RoleName = 'Super Admin';
 const TAB_TO_MODULE: Record<NavTab, ModuleKey> = {
   dashboard: 'dashboard', items: 'items', inventory: 'inventory',
   manufacturing: 'manufacturing', quality: 'quality', costing: 'costing',
-  sales: 'sales', purchasing: 'purchasing', customers: 'customers',
+  sales: 'sales', cashier: 'sales', purchasing: 'purchasing', customers: 'customers',
   suppliers: 'suppliers', representatives: 'representatives', export: 'export',
   treasury: 'treasury', banks: 'banks', cheques: 'cheques', expenses: 'expenses', payroll: 'expenses',
   accounting: 'accounting', opening: 'accounting', reports: 'reports', users: 'users', settings: 'settings',
