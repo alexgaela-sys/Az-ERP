@@ -3,13 +3,18 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "start": "tsx server.ts",
     "preview": "vite preview --port 3000 --host 0.0.0.0",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "build:desktop": "vite build --mode desktop",
+    "electron:start": "bun run build:desktop && electron .",
+    "dist:win": "bun run build:desktop && electron-builder --win nsis",
+    "dist:win:publish": "bun run build:desktop && electron-builder --win nsis --publish always"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -21,7 +26,8 @@
     "vite": "^8.3.0",
     "express": "^4.21.2",
     "dotenv": "^17.2.3",
-    "motion": "^12.23.24"
+    "motion": "^12.23.24",
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -30,9 +36,39 @@
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
     "bun-types": "^1.4.4",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2"
+  },
+  "build": {
+    "appId": "com.yzerp.desktop",
+    "productName": "YZ ERP",
+    "copyright": "YZ ERP",
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "alexgaela-sys",
+        "repo": "Az-ERP"
+      }
+    ]
   }
 }

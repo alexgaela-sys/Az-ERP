@@ -1,0 +1,30 @@
+name: Build Windows desktop installer
+
+# Builds the On-Premise (Electron) version and publishes it as a GitHub
+# Release whenever a version tag is pushed, e.g.:
+#   git tag v1.0.0 && git push origin v1.0.0
+# electron-updater (wired in electron/main.js) checks these Releases to
+# auto-update already-installed copies of the app.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build desktop app (local/offline mode) and the Windows installer
+        run: bun run dist:win:publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

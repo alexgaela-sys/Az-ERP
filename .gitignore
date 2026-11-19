@@ -7,3 +7,5 @@ tsconfig.tsbuildinfo
 *.log
 .env*
 !.env.example
+!.env.desktop
+release/

@@ -1,12 +1,14 @@
 /*
- * SnakDip ERP service worker — MINIMAL & SAFE.
+ * YZ ERP service worker — MINIMAL & SAFE.
  *
  * Purpose: PWA installability (Chrome requires a fetch handler for the
  * install prompt). It intentionally does NOT cache any runtime responses,
  * so the ERP's localStorage-backed database, sessions, and all mutations
  * are untouched. Offline behavior is identical to today (browser cache).
  */
-const CACHE_NAME = 'snakdip-erp-static-v1';
+// v2: bumped so devices that already installed the old SnakDip manifest
+// (name/icons/theme-color) are forced to refetch the rebranded one.
+const CACHE_NAME = 'yz-erp-static-v2';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {

@@ -3,8 +3,15 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  // The web build (Cloudflare Worker) is served from the domain root, so it
+  // needs absolute asset paths ('/'). The desktop (Electron) build loads
+  // dist/index.html via file://, where absolute paths resolve to disk root
+  // and fail — it needs relative paths ('./'). Triggered by "--mode desktop"
+  // (see package.json's "build:desktop" and .env.desktop).
+  const isDesktop = mode === 'desktop';
   return {
+    base: isDesktop ? './' : '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
