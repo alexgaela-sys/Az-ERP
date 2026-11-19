@@ -105,9 +105,77 @@ interface SetupProps {
   error: string;
 }
 
+interface NewCompanyFields {
+  nameAr: string;
+  nameEn: string;
+  taxNumber: string;
+  commercialRegister: string;
+  phone: string;
+  address: string;
+}
+
+const NewCompanyWizard: React.FC<{ onDone: (fields: NewCompanyFields) => void; onCancel: () => void }> = ({
+  onDone,
+  onCancel,
+}) => {
+  const [fields, setFields] = useState<NewCompanyFields>({
+    nameAr: '',
+    nameEn: '',
+    taxNumber: '',
+    commercialRegister: '',
+    phone: '',
+    address: '',
+  });
+  const set = (key: keyof NewCompanyFields) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setFields(f => ({ ...f, [key]: e.target.value }));
+
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={e => {
+        e.preventDefault();
+        onDone(fields);
+      }}
+    >
+      <p className="text-xs text-cream-800">بيانات الشركة الأساسية (يمكن تعديلها لاحقًا من الإعدادات).</p>
+      <input className={input} placeholder="اسم الشركة بالعربية *" value={fields.nameAr} onChange={set('nameAr')} required />
+      <input className={input} placeholder="اسم الشركة بالإنجليزية" value={fields.nameEn} onChange={set('nameEn')} dir="ltr" />
+      <div className="grid grid-cols-2 gap-2">
+        <input className={input} placeholder="الرقم الضريبي" value={fields.taxNumber} onChange={set('taxNumber')} dir="ltr" />
+        <input className={input} placeholder="السجل التجاري" value={fields.commercialRegister} onChange={set('commercialRegister')} dir="ltr" />
+      </div>
+      <input className={input} placeholder="رقم الهاتف" value={fields.phone} onChange={set('phone')} dir="ltr" />
+      <input className={input} placeholder="العنوان" value={fields.address} onChange={set('address')} />
+      <div className="flex gap-2 pt-1">
+        <button type="button" className={secondary} onClick={onCancel}>
+          إلغاء
+        </button>
+        <button type="submit" className={primary}>
+          إنشاء الشركة
+        </button>
+      </div>
+    </form>
+  );
+};
+
 const FirstTimeSetup: React.FC<SetupProps> = ({ onImport, error }) => {
   const [local] = useState<ERPDatabaseSchema | null>(() => readLegacyLocalDatabase());
   const [fileError, setFileError] = useState('');
+  const [showWizard, setShowWizard] = useState(false);
+
+  const startNewCompany = (fields: NewCompanyFields) => {
+    const db = createEmptyDatabase();
+    db.company = {
+      ...db.company,
+      nameAr: fields.nameAr.trim() || db.company.nameAr,
+      nameEn: fields.nameEn.trim(),
+      taxNumber: fields.taxNumber.trim(),
+      commercialRegister: fields.commercialRegister.trim(),
+      phone: fields.phone.trim(),
+      address: fields.address.trim(),
+    };
+    onImport({ label: 'شركة جديدة', db });
+  };
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -155,11 +223,15 @@ const FirstTimeSetup: React.FC<SetupProps> = ({ onImport, error }) => {
       </div>
 
       <div className="rounded-xl border border-cream-300 p-3 space-y-2">
-        <p className="text-sm font-bold">البدء ببيانات أساسية جديدة</p>
+        <p className="text-sm font-bold">البدء بشركة جديدة</p>
         <p className="text-xs text-cream-800">دليل الحسابات والمخازن الافتراضية فقط — بدون أصناف أو موردين أو حركات.</p>
-        <button className={primary} onClick={() => onImport({ label: 'البيانات الأساسية الافتراضية', db: createEmptyDatabase() })}>
-          بدء نظام جديد
-        </button>
+        {showWizard ? (
+          <NewCompanyWizard onDone={startNewCompany} onCancel={() => setShowWizard(false)} />
+        ) : (
+          <button className={primary} onClick={() => setShowWizard(true)}>
+            بدء نظام جديد
+          </button>
+        )}
       </div>
 
       <div className="rounded-xl border border-dashed border-cream-300 p-3 space-y-2">
