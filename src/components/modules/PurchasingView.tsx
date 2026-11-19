@@ -8,6 +8,50 @@ import {
 import { erpDb } from '../../services/db';
 import { WorkflowService } from '../../services/workflows';
 import { PaymentMethod } from '../../types/erp';
+import { code39Svg } from '../barcode/code39';
+
+/** Opens a print-ready window with one Code 39 label per unit received
+ *  (capped per line to keep the print job manageable), so warehouse staff
+ *  can label incoming stock right after a purchase is posted. */
+function printPurchaseBarcodeLabels(
+  lines: Array<{ itemId: string; quantity: number }>,
+  items: Array<{ id: string; code: string; nameAr: string; barcode?: string }>
+) {
+  const MAX_LABELS_PER_LINE = 100;
+  const labels: Array<{ code: string; nameAr: string }> = [];
+  for (const l of lines) {
+    const item = items.find(i => i.id === l.itemId);
+    if (!item) continue;
+    const codeToPrint = item.barcode || item.code;
+    const copies = Math.max(1, Math.min(Math.round(l.quantity) || 1, MAX_LABELS_PER_LINE));
+    for (let i = 0; i < copies; i++) labels.push({ code: codeToPrint, nameAr: item.nameAr });
+  }
+  if (labels.length === 0) return;
+
+  const win = window.open('', '_blank', 'width=800,height=600');
+  if (!win) return;
+  const labelsHtml = labels
+    .map(
+      l => `<div class="label">
+        <div class="name">${l.nameAr}</div>
+        ${code39Svg(l.code, { narrow: 2, height: 40 })}
+      </div>`
+    )
+    .join('');
+  win.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"/>
+    <title>ملصقات الباركود</title>
+    <style>
+      body { font-family: 'Tahoma', sans-serif; margin: 0; padding: 8px; }
+      .sheet { display: flex; flex-wrap: wrap; gap: 6px; }
+      .label { border: 1px dashed #999; padding: 6px 8px; text-align: center; width: 190px; }
+      .name { font-size: 11px; font-weight: bold; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      @media print { .label { border: none; } }
+    </style></head>
+    <body><div class="sheet">${labelsHtml}</div>
+    <script>window.onload = () => { window.print(); };</script>
+    </body></html>`);
+  win.document.close();
+}
 
 export const PurchasingView: React.FC = () => {
   const db = erpDb.getSnapshot();
@@ -933,7 +977,16 @@ export const PurchasingView: React.FC = () => {
             <div className="bg-white rounded-xl max-w-3xl w-full max-h-[85vh] overflow-auto p-5" dir="rtl" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-black text-lg">فاتورة مشتريات {vi.invoiceNumber}</h3>
-                <button type="button" onClick={() => setViewInvId(null)} className="text-slate-500 font-bold">إغلاق ✕</button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => printPurchaseBarcodeLabels(vl, db.items)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs"
+                  >
+                    طباعة ملصقات الباركود
+                  </button>
+                  <button type="button" onClick={() => setViewInvId(null)} className="text-slate-500 font-bold">إغلاق ✕</button>
+                </div>
               </div>
               <div className="text-sm text-slate-600 mb-3">{vs?.name || 'غير معروف'} — {vi.date} — مرجع: {vi.reference || '-'}</div>
               <table className="w-full text-sm text-right">

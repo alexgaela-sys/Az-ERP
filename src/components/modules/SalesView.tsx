@@ -96,6 +96,50 @@ export const SalesView: React.FC = () => {
     setLines(lines.filter((_, i) => i !== index));
   };
 
+  // Barcode scanner support: a USB/Bluetooth scanner types the barcode then
+  // sends Enter, exactly like a keyboard. Scanning an existing line's item
+  // just bumps its quantity by one; a new barcode adds a fresh line.
+  const [scanInput, setScanInput] = useState('');
+  const [scanError, setScanError] = useState('');
+
+  const scanBarcode = (code: string) => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    const itm = finishedProducts.find(i => i.barcode === trimmed || i.code === trimmed);
+    if (!itm) {
+      setScanError(`لا يوجد صنف بالباركود "${trimmed}"`);
+      return;
+    }
+    setScanError('');
+    setLines(prev => {
+      const existingIdx = prev.findIndex(l => l.itemId === itm.id);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = { ...updated[existingIdx], quantity: updated[existingIdx].quantity + 1 };
+        return updated;
+      }
+      return [
+        ...prev,
+        {
+          itemId: itm.id,
+          quantity: 1,
+          freeQuantity: 0,
+          unitPrice: priceFor(itm, channel),
+          vatRate: channel === 'export' ? 0 : itm.vatRate,
+          priceOverridden: false,
+        },
+      ];
+    });
+  };
+
+  const onScanKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      scanBarcode(scanInput);
+      setScanInput('');
+    }
+  };
+
   /** F4: re-price existing lines for a new channel — skipping manually overridden prices. */
   const repriceLinesForChannel = (
     currentLines: typeof lines,
@@ -630,15 +674,27 @@ export const SalesView: React.FC = () => {
 
               {/* Line Items Table */}
               <div className="border border-slate-200 rounded-xl overflow-hidden mt-4">
-                <div className="p-3 bg-slate-100 flex items-center justify-between">
+                <div className="p-3 bg-slate-100 flex items-center justify-between gap-2 flex-wrap">
                   <span className="font-bold text-xs text-slate-800">بنود الفاتورة والمنتجات</span>
-                  <button
-                    onClick={addLine}
-                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs"
-                  >
-                    + إضافة صنف
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={scanInput}
+                      onChange={(e) => setScanInput(e.target.value)}
+                      onKeyDown={onScanKeyDown}
+                      placeholder="امسح الباركود هنا…"
+                      dir="ltr"
+                      className="w-40 p-1.5 rounded-lg border border-slate-300 text-xs bg-white"
+                    />
+                    <button
+                      onClick={addLine}
+                      className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs"
+                    >
+                      + إضافة صنف
+                    </button>
+                  </div>
                 </div>
+                {scanError && <p className="px-3 pb-2 text-[11px] text-red-700 font-bold">{scanError}</p>}
 
                 <table className="w-full text-right text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
