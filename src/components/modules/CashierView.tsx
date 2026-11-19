@@ -69,7 +69,9 @@ function printReceipt(opts: {
   win.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"/>
     <title>إيصال ${opts.invoiceNumber}</title>
     <style>
-      body { font-family: 'Tahoma', sans-serif; width: 280px; margin: 0 auto; padding: 10px; font-size: 12px; }
+      /* 80mm receipt-printer roll width, not A4. */
+      @page { size: 80mm auto; margin: 0; }
+      body { font-family: 'Tahoma', sans-serif; width: 72mm; margin: 0 auto; padding: 4mm; font-size: 12px; }
       h2 { text-align: center; margin: 4px 0; }
       .meta { text-align: center; font-size: 11px; color: #444; margin-bottom: 8px; }
       table { width: 100%; border-collapse: collapse; }

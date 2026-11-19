@@ -38,13 +38,22 @@ function printPurchaseBarcodeLabels(
       </div>`
     )
     .join('');
+  // Label size, not A4: a standard small thermal/sticker label (50mm x 30mm),
+  // one per printed page, so this prints on a label printer/roll correctly
+  // instead of wasting a full sheet of paper per label.
   win.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"/>
     <title>ملصقات الباركود</title>
     <style>
-      body { font-family: 'Tahoma', sans-serif; margin: 0; padding: 8px; }
-      .sheet { display: flex; flex-wrap: wrap; gap: 6px; }
-      .label { border: 1px dashed #999; padding: 6px 8px; text-align: center; width: 190px; }
-      .name { font-size: 11px; font-weight: bold; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      @page { size: 50mm 30mm; margin: 0; }
+      body { font-family: 'Tahoma', sans-serif; margin: 0; padding: 0; }
+      .sheet { display: flex; flex-wrap: wrap; }
+      .label {
+        width: 50mm; height: 30mm; box-sizing: border-box; padding: 2mm;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        page-break-after: always; border: 1px dashed #999; text-align: center;
+      }
+      .label svg { width: 90%; height: auto; }
+      .name { font-size: 9px; font-weight: bold; margin-bottom: 1mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
       @media print { .label { border: none; } }
     </style></head>
     <body><div class="sheet">${labelsHtml}</div>

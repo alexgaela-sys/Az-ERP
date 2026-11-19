@@ -59,7 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Small brand mark */}
           <div className="hidden md:flex w-8 h-8 rounded-lg bg-brand-500 items-center justify-center shadow-brand shrink-0">
             <span className="font-black text-sm text-white tracking-tight">
-              S<span className="text-ink-950">D</span>
+              Y<span className="text-ink-950">Z</span>
             </span>
           </div>
           <span className="text-sm font-black text-ink-900 truncate">
