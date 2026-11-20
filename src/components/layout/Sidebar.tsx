@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { User } from '../../types/erp';
 import { PermissionService } from '../../services/permissions';
+import { erpDb } from '../../services/db';
 
 export type NavTab =
   | 'dashboard'
@@ -136,6 +137,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const toggleGroup = (title: string) =>
     setCollapsed(prev => ({ ...prev, [title]: !prev[title] }));
 
+  // A trading or services business has no production floor: hide the whole
+  // manufacturing/quality/costing group rather than show empty, confusing
+  // screens. Undefined businessType (companies created before this field
+  // existed) behaves like 'manufacturing' — nothing hidden.
+  const businessType = erpDb.getSnapshot().company.businessType;
+  const visibleGroups =
+    businessType === 'trading' || businessType === 'services'
+      ? NAV_GROUPS.filter(g => g.titleAr !== 'الإنتاج والجودة')
+      : NAV_GROUPS;
+
   return (
     <>
       {/* Mobile backdrop */}
@@ -193,7 +204,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Grouped navigation — filtered by role permissions */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-2.5 scrollbar-thin scrollbar-thumb-ink-700">
-          {NAV_GROUPS.map(group => {
+          {visibleGroups.map(group => {
             const visibleItems = group.items.filter(
               item => !currentUser || PermissionService.canView(currentUser.role, item.id)
             );

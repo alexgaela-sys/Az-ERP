@@ -112,7 +112,14 @@ interface NewCompanyFields {
   commercialRegister: string;
   phone: string;
   address: string;
+  businessType: 'manufacturing' | 'trading' | 'services';
 }
+
+const BUSINESS_TYPE_OPTIONS: Array<{ value: NewCompanyFields['businessType']; label: string }> = [
+  { value: 'manufacturing', label: 'تصنيع' },
+  { value: 'trading', label: 'تجارة (بيع وشراء فقط)' },
+  { value: 'services', label: 'خدمات' },
+];
 
 const NewCompanyWizard: React.FC<{ onDone: (fields: NewCompanyFields) => void; onCancel: () => void }> = ({
   onDone,
@@ -125,6 +132,7 @@ const NewCompanyWizard: React.FC<{ onDone: (fields: NewCompanyFields) => void; o
     commercialRegister: '',
     phone: '',
     address: '',
+    businessType: 'manufacturing',
   });
   const set = (key: keyof NewCompanyFields) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setFields(f => ({ ...f, [key]: e.target.value }));
@@ -146,6 +154,32 @@ const NewCompanyWizard: React.FC<{ onDone: (fields: NewCompanyFields) => void; o
       </div>
       <input className={input} placeholder="رقم الهاتف" value={fields.phone} onChange={set('phone')} dir="ltr" />
       <input className={input} placeholder="العنوان" value={fields.address} onChange={set('address')} />
+
+      <div>
+        <label className="block text-xs font-bold text-cream-800 mb-1">نوع النشاط *</label>
+        <div className="grid grid-cols-3 gap-2">
+          {BUSINESS_TYPE_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setFields(f => ({ ...f, businessType: opt.value }))}
+              className={`py-2 px-2 rounded-xl text-xs font-bold border ${
+                fields.businessType === opt.value
+                  ? 'bg-brand-500 text-white border-brand-500'
+                  : 'bg-white border-cream-300 text-cream-800'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {fields.businessType !== 'manufacturing' && (
+          <p className="text-[11px] text-cream-700 mt-1">
+            هيتم إخفاء شاشات الإنتاج والجودة والتكاليف من القائمة الجانبية تلقائيًا — تقدر تظهرها تاني من الإعدادات لو احتجتها.
+          </p>
+        )}
+      </div>
+
       <div className="flex gap-2 pt-1">
         <button type="button" className={secondary} onClick={onCancel}>
           إلغاء
@@ -173,6 +207,7 @@ const FirstTimeSetup: React.FC<SetupProps> = ({ onImport, error }) => {
       commercialRegister: fields.commercialRegister.trim(),
       phone: fields.phone.trim(),
       address: fields.address.trim(),
+      businessType: fields.businessType,
     };
     onImport({ label: 'شركة جديدة', db });
   };

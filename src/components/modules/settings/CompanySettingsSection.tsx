@@ -24,11 +24,15 @@ export const CompanySettingsSection: React.FC = () => {
     contactPhone: company.contactPhone || '',
     currentUsdExchangeRate: String(company.currentUsdExchangeRate ?? ''),
     logoDataUrl: company.logoDataUrl || '',
+    businessType: company.businessType || 'manufacturing',
   });
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const set = (key: keyof typeof form, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+  // businessType is a literal union, not a plain string — it's set directly
+  // via setForm below, not through this generic string-field setter.
+  const set = (key: keyof Omit<typeof form, 'businessType'>, value: string) =>
+    setForm(prev => ({ ...prev, [key]: value }));
 
   const handleLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -62,6 +66,7 @@ export const CompanySettingsSection: React.FC = () => {
       contactPhone: form.contactPhone,
       logoDataUrl: form.logoDataUrl,
       currentUsdExchangeRate: form.currentUsdExchangeRate === '' ? undefined : Number(form.currentUsdExchangeRate),
+      businessType: form.businessType,
     });
     setMessage(res.success
       ? { tone: 'ok', text: 'تم حفظ بيانات الشركة في قاعدة البيانات — تظهر فورًا في الفواتير المطبوعة.' }
@@ -163,6 +168,32 @@ export const CompanySettingsSection: React.FC = () => {
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">هاتف التواصل</label>
               <input className={input} dir="ltr" value={form.contactPhone} onChange={e => set('contactPhone', e.target.value)} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">نوع النشاط</label>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { value: 'manufacturing', label: 'تصنيع' },
+                  { value: 'trading', label: 'تجارة (بيع وشراء فقط)' },
+                  { value: 'services', label: 'خدمات' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, businessType: opt.value }))}
+                    className={`py-2 px-2 rounded-xl text-xs font-bold border cursor-pointer ${
+                      form.businessType === opt.value
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-slate-50 border-slate-300 text-slate-700'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1">
+                "تجارة" و"خدمات" بيخفوا شاشات الإنتاج والجودة والتكاليف من القائمة الجانبية (تقدر ترجعها تاني من هنا في أي وقت).
+              </p>
             </div>
           </div>
         </div>

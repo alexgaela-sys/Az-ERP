@@ -77,6 +77,7 @@ const COMPANY_FIELD_LABELS_AR: Record<string, string> = {
   contactPhone: 'هاتف التواصل',
   logoDataUrl: 'الشعار',
   currentUsdExchangeRate: 'سعر صرف الدولار',
+  businessType: 'نوع النشاط',
 };
 
 const TEMPLATE_FIELD_LABELS_AR: Record<string, string> = {
@@ -205,7 +206,8 @@ export class CompanySettingsService {
     nameAr?: string; nameEn?: string; taxNumber?: string; commercialRegister?: string;
     address?: string; phone?: string; email?: string; website?: string;
     contactName?: string; contactPhone?: string; logoDataUrl?: string;
-    currentUsdExchangeRate?: number; userId?: string; userName?: string; isTest?: boolean;
+    currentUsdExchangeRate?: number; businessType?: Company['businessType'];
+    userId?: string; userName?: string; isTest?: boolean;
   }): SettingsResult {
     const guard = AuthorizationService.enforce('settings', 'edit', params);
     if (!guard.allowed) return { success: false, error: guard.error };
@@ -257,6 +259,9 @@ export class CompanySettingsService {
         return { success: false, error: 'سعر صرف الدولار يجب أن يكون رقمًا أكبر من صفر' };
       }
       patch.currentUsdExchangeRate = rate;
+    }
+    if (params.businessType !== undefined) {
+      patch.businessType = params.businessType;
     }
 
     const changed = (Object.keys(patch) as Array<keyof Company>).filter(k => company[k] !== patch[k]);

@@ -66,6 +66,12 @@ export interface Company {
   website?: string;
   contactName?: string;
   contactPhone?: string;
+  /** Drives which modules show in the sidebar (e.g. hides manufacturing/
+   *  quality/costing for a pure trading or services business). Undefined
+   *  (companies created before this field existed) behaves like
+   *  'manufacturing' — nothing is hidden, to avoid surprising existing
+   *  users. */
+  businessType?: 'manufacturing' | 'trading' | 'services';
 }
 
 export type WarehouseType = 
