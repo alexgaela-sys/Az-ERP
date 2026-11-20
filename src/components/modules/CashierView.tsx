@@ -14,6 +14,9 @@ interface CartLine {
   quantity: number;
   unitPrice: number;
   vatRate: number;
+  /** Line discount as a percentage (0-100), same semantics as the regular
+   *  Sales module's SalesInvoiceLine.discount. */
+  discountPct: number;
 }
 
 /** Every POS sale needs a customer card. A single shared "walk-in" cash
@@ -124,7 +127,7 @@ export const CashierView: React.FC = () => {
         updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + 1 };
         return updated;
       }
-      return [...prev, { itemId, quantity: 1, unitPrice: priceFor(itm, 'retail'), vatRate: itm.vatRate }];
+      return [...prev, { itemId, quantity: 1, unitPrice: priceFor(itm, 'retail'), vatRate: itm.vatRate, discountPct: 0 }];
     });
   };
 
@@ -152,11 +155,20 @@ export const CashierView: React.FC = () => {
     setCart(prev => prev.map(l => (l.itemId === itemId ? { ...l, quantity: Math.max(0.001, qty) } : l)));
   };
 
+  const updateDiscount = (itemId: string, pct: number) => {
+    const clamped = Math.max(0, Math.min(100, pct || 0));
+    setCart(prev => prev.map(l => (l.itemId === itemId ? { ...l, discountPct: clamped } : l)));
+  };
+
   const removeLine = (itemId: string) => setCart(prev => prev.filter(l => l.itemId !== itemId));
   const clearCart = () => setCart([]);
 
-  const subtotal = cart.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
-  const vat = cart.reduce((s, l) => s + l.quantity * l.unitPrice * l.vatRate, 0);
+  // Net-of-discount amount for a line (discount is a percentage, same
+  // semantics as the regular Sales module's SalesInvoiceLine.discount).
+  const lineNet = (l: CartLine) => l.quantity * l.unitPrice * (1 - (l.discountPct || 0) / 100);
+
+  const subtotal = cart.reduce((s, l) => s + lineNet(l), 0);
+  const vat = cart.reduce((s, l) => s + lineNet(l) * l.vatRate, 0);
   const total = subtotal + vat;
   const cashReceivedNum = Number(cashReceived) || 0;
   const change = paymentMethod === 'cash' ? cashReceivedNum - total : 0;
@@ -201,6 +213,7 @@ export const CashierView: React.FC = () => {
         quantity: l.quantity,
         unitPrice: l.unitPrice,
         vatRate: l.vatRate,
+        discount: l.discountPct || 0,
       })),
       userId: session?.user.id,
       userName: session?.user.name,
@@ -218,7 +231,7 @@ export const CashierView: React.FC = () => {
       lines: cart.map(l => ({
         nameAr: finishedProducts.find(i => i.id === l.itemId)?.nameAr || l.itemId,
         quantity: l.quantity,
-        unitPrice: l.unitPrice,
+        unitPrice: l.unitPrice * (1 - (l.discountPct || 0) / 100),
         vatRate: l.vatRate,
       })),
       subtotal,
@@ -312,10 +325,13 @@ export const CashierView: React.FC = () => {
           {cart.map(l => {
             const itm = finishedProducts.find(i => i.id === l.itemId);
             return (
-              <div key={l.itemId} className="py-2 flex items-center gap-2">
+              <div key={l.itemId} className="py-2 flex items-center gap-2 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold truncate">{itm?.nameAr || l.itemId}</div>
-                  <div className="text-[11px] text-cream-700 font-mono">{l.unitPrice.toFixed(2)} ج.م × {l.quantity}</div>
+                  <div className="text-[11px] text-cream-700 font-mono">
+                    {l.unitPrice.toFixed(2)} ج.م × {l.quantity}
+                    {l.discountPct > 0 && <span className="text-emerald-700 font-bold"> (خصم {l.discountPct}%)</span>}
+                  </div>
                 </div>
                 <input
                   type="number"
@@ -323,8 +339,22 @@ export const CashierView: React.FC = () => {
                   step="1"
                   value={l.quantity}
                   onChange={e => updateQty(l.itemId, Number(e.target.value))}
+                  title="الكمية"
                   className="w-16 p-1 rounded-lg border border-cream-300 text-xs text-center"
                 />
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={l.discountPct || 0}
+                    onChange={e => updateDiscount(l.itemId, Number(e.target.value))}
+                    title="نسبة الخصم %"
+                    className="w-14 p-1 rounded-lg border border-cream-300 text-xs text-center"
+                  />
+                  <span className="text-[10px] text-cream-600 font-bold">%</span>
+                </div>
                 <button onClick={() => removeLine(l.itemId)} className="text-cream-600 hover:text-red-700">
                   <Trash2 className="w-4 h-4" />
                 </button>
