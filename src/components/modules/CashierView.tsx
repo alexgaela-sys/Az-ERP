@@ -54,6 +54,8 @@ function printReceipt(opts: {
   subtotal: number;
   vat: number;
   total: number;
+  /** Total amount shaved off by line discounts (pre-VAT), shown as "وفرت". */
+  savedAmount?: number;
   cashReceived?: number;
   change?: number;
 }) {
@@ -98,6 +100,11 @@ function printReceipt(opts: {
         ${opts.cashReceived != null ? `<div><span>المدفوع نقدًا</span><span>${opts.cashReceived.toFixed(2)}</span></div>
         <div><span>الباقي</span><span>${(opts.change ?? 0).toFixed(2)}</span></div>` : ''}
       </div>
+      ${opts.savedAmount && opts.savedAmount > 0.001
+        ? `<div style="margin-top:6px; text-align:center; font-weight:bold; border:1px dashed #000; padding:4px; border-radius:4px;">
+             لقد وفرت ${opts.savedAmount.toFixed(2)} ج.م في هذه الفاتورة 🎉
+           </div>`
+        : ''}
       <script>window.onload = () => { window.print(); };</script>
     </body></html>`);
   win.document.close();
@@ -169,6 +176,7 @@ export const CashierView: React.FC = () => {
 
   const subtotal = cart.reduce((s, l) => s + lineNet(l), 0);
   const vat = cart.reduce((s, l) => s + lineNet(l) * l.vatRate, 0);
+  const savedAmount = cart.reduce((s, l) => s + l.quantity * l.unitPrice * ((l.discountPct || 0) / 100), 0);
   const total = subtotal + vat;
   const cashReceivedNum = Number(cashReceived) || 0;
   const change = paymentMethod === 'cash' ? cashReceivedNum - total : 0;
@@ -237,6 +245,7 @@ export const CashierView: React.FC = () => {
       subtotal,
       vat,
       total,
+      savedAmount,
       cashReceived: paymentMethod === 'cash' ? cashReceivedNum : undefined,
       change: paymentMethod === 'cash' ? change : undefined,
     });
