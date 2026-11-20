@@ -2,7 +2,7 @@
 // Reuses the exact same accounting/inventory posting path as the regular
 // Sales module (WorkflowService.createSalesInvoice): no parallel ledger logic.
 import React, { useState } from 'react';
-import { Banknote, Search, Trash2, X } from 'lucide-react';
+import { Banknote, Search, Trash2, X, Undo2 } from 'lucide-react';
 import { erpDb, generateErpId } from '../../services/db';
 import { WorkflowService } from '../../services/workflows';
 import { PaymentMethod } from '../../types/erp';
@@ -112,6 +112,7 @@ export const CashierView: React.FC = () => {
   const [cashReceived, setCashReceived] = useState<string>('');
   const [formError, setFormError] = useState('');
   const [lastReceipt, setLastReceipt] = useState<string>('');
+  const [mode, setMode] = useState<'sale' | 'return'>('sale');
 
   const addItem = (itemId: string) => {
     const itm = finishedProducts.find(i => i.id === itemId);
@@ -232,13 +233,25 @@ export const CashierView: React.FC = () => {
     setCashReceived('');
   };
 
+  if (mode === 'return') {
+    return <ReturnPanel onBack={() => setMode('sale')} />;
+  }
+
   return (
     <div className="h-full flex flex-col lg:flex-row gap-4 p-4" dir="rtl">
       {/* Product grid */}
       <div className="flex-1 min-w-0 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <Banknote className="w-5 h-5 text-brand-600" />
-          <h2 className="font-black text-lg">شاشة الكاشير</h2>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Banknote className="w-5 h-5 text-brand-600" />
+            <h2 className="font-black text-lg">شاشة الكاشير</h2>
+          </div>
+          <button
+            onClick={() => setMode('return')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200"
+          >
+            <Undo2 className="w-3.5 h-3.5" /> مرتجع
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -368,6 +381,152 @@ export const CashierView: React.FC = () => {
         >
           إتمام البيع وطباعة الإيصال
         </button>
+      </div>
+    </div>
+  );
+};
+
+/** Looks up a posted sales invoice by number and posts a partial/full return
+ *  against it through WorkflowService.postSalesReturn — the exact same
+ *  inspection/inventory/GL reversal logic as the regular Returns workflow. */
+const ReturnPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+  const db = erpDb.getSnapshot();
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState('');
+  const [qtyByLine, setQtyByLine] = useState<Record<string, number>>({});
+  const [reason, setReason] = useState('');
+  const [formError, setFormError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  const invoice = invoiceId ? db.salesInvoices.find(i => i.id === invoiceId) : null;
+  const lines = invoice ? db.salesInvoiceLines.filter(l => l.invoiceId === invoice.id) : [];
+
+  const searchInvoice = () => {
+    setSuccessMsg('');
+    setFormError('');
+    const found = db.salesInvoices.find(i => i.invoiceNumber === invoiceNumber.trim() && i.status === 'posted');
+    if (!found) {
+      setSearchError(`لا توجد فاتورة مرحّلة برقم "${invoiceNumber.trim()}"`);
+      setInvoiceId(null);
+      return;
+    }
+    setSearchError('');
+    setInvoiceId(found.id);
+    setQtyByLine({});
+  };
+
+  const submitReturn = () => {
+    if (!invoice) return;
+    setFormError('');
+    const selected = lines
+      .filter(l => (qtyByLine[l.id] || 0) > 0)
+      .map(l => ({ itemId: l.itemId, quantity: qtyByLine[l.id], unitPrice: l.unitPrice, vatRate: l.vatRate }));
+    if (selected.length === 0) {
+      setFormError('حدد كمية صنف واحد على الأقل للإرجاع');
+      return;
+    }
+    if (!reason.trim()) {
+      setFormError('سبب المرتجع مطلوب');
+      return;
+    }
+    const session = AuthService.getCurrentSession();
+    const res = WorkflowService.postSalesReturn({
+      customerId: invoice.customerId,
+      invoiceId: invoice.id,
+      warehouseId: invoice.warehouseId,
+      date: new Date().toISOString().split('T')[0],
+      reason: reason.trim(),
+      lines: selected,
+      userId: session?.user.id,
+      userName: session?.user.name,
+    });
+    if (!res.success || !res.salesReturn) {
+      setFormError(res.error || 'حدث خطأ أثناء ترحيل المرتجع');
+      return;
+    }
+    setSuccessMsg(`تم ترحيل المرتجع رقم ${res.salesReturn.returnNumber} بنجاح.`);
+    setQtyByLine({});
+    setReason('');
+  };
+
+  return (
+    <div className="h-full p-4 max-w-2xl mx-auto" dir="rtl">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Undo2 className="w-5 h-5 text-rose-600" />
+          <h2 className="font-black text-lg">مرتجع من فاتورة كاشير</h2>
+        </div>
+        <button onClick={onBack} className="text-xs font-bold text-cream-700 flex items-center gap-1">
+          <X className="w-3.5 h-3.5" /> رجوع للبيع
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-cream-300 shadow-lg p-4 space-y-3">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={invoiceNumber}
+            onChange={e => setInvoiceNumber(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && searchInvoice()}
+            placeholder="رقم الفاتورة"
+            dir="ltr"
+            className="flex-1 p-2 rounded-xl border border-cream-300 text-sm"
+          />
+          <button onClick={searchInvoice} className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs">
+            بحث
+          </button>
+        </div>
+        {searchError && <p className="text-xs text-red-700 font-bold">{searchError}</p>}
+
+        {invoice && (
+          <>
+            <div className="divide-y divide-cream-100 border-y border-cream-200">
+              {lines.map(l => {
+                const itm = db.items.find(i => i.id === l.itemId);
+                return (
+                  <div key={l.id} className="py-2 flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold truncate">{itm?.nameAr || l.itemId}</div>
+                      <div className="text-[11px] text-cream-700 font-mono">
+                        بيع: {l.quantity} × {l.unitPrice.toFixed(2)} ج.م
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      max={l.quantity}
+                      step="1"
+                      value={qtyByLine[l.id] || 0}
+                      onChange={e =>
+                        setQtyByLine(prev => ({ ...prev, [l.id]: Math.max(0, Math.min(l.quantity, Number(e.target.value))) }))
+                      }
+                      className="w-20 p-1.5 rounded-lg border border-cream-300 text-xs text-center"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            <input
+              type="text"
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="سبب المرتجع *"
+              className="w-full p-2 rounded-xl border border-cream-300 text-sm"
+            />
+
+            {formError && <p className="text-xs text-red-700 font-bold">{formError}</p>}
+            {successMsg && <p className="text-xs text-emerald-700 font-bold">{successMsg}</p>}
+
+            <button
+              onClick={submitReturn}
+              className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-sm"
+            >
+              تنفيذ المرتجع
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
