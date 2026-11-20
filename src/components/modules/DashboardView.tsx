@@ -2,7 +2,7 @@ import React from 'react';
 import {
   TrendingUp, Boxes, Users, AlertTriangle,
   Wallet, Landmark, ShoppingCart, Truck, CreditCard,
-  CheckCircle2, BarChart3, DollarSign, Factory, UserCheck, ArrowLeft, Package
+  CheckCircle2, BarChart3, DollarSign, Factory, UserCheck, ArrowLeft, Package, PackageX
 } from 'lucide-react';
 import { erpDb } from '../../services/db';
 import { InventoryEngine } from '../../services/inventory';
@@ -111,6 +111,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
   // so changing the setting updates the card, the count and the heading.
   const expiryThresholdDays = SettingsService.getExpiryWarningDays();
   const expiringBatches = InventoryEngine.getExpiringBatches(expiryThresholdDays);
+
+  // Low-stock / reorder alerts: active items with a configured reorder point
+  // (minStockLevel > 0) whose current balance (all warehouses) has reached
+  // or dropped below it. Sorted worst-first (most negative margin, zero stock first).
+  const lowStockItems = db.items
+    .filter(i => i.active && (i.minStockLevel || 0) > 0)
+    .map(i => ({ item: i, balance: InventoryEngine.getItemBalance(i.id) }))
+    .filter(({ item, balance }) => balance <= (item.minStockLevel || 0))
+    .sort((a, b) => a.balance - b.balance)
+    .slice(0, 20);
+
   const isEmptySystem =
     db.salesInvoices.length === 0 && db.purchaseInvoices.length === 0 && db.batches.length === 0;
 
@@ -347,6 +358,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
           tone={expiringBatches.length > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}
           onClick={() => onNavigateTab('inventory')}
         />
+        <KpiTile
+          label="أصناف وصلت لحد إعادة الطلب"
+          value={formatNum(lowStockItems.length)}
+          hint="الرصيد وصل للحد الأدنى المُعرّف أو أقل"
+          icon={PackageX}
+          tone={lowStockItems.length > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}
+          onClick={() => onNavigateTab('items')}
+        />
       </div>
 
       {/* Production flow strip */}
@@ -430,8 +449,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
         </SectionCard>
       </div>
 
-      {/* Row: expiry alerts & top products */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Row: expiry alerts, low-stock alerts & top products */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* 10-day expiry alerts */}
         <div className="card p-5">
           <div className="flex items-center justify-between pb-3 border-b border-cream-200">
@@ -468,6 +487,49 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
                   <div className="text-left font-mono shrink-0">
                     <span className="text-brand-700 font-black text-sm block">باقي {b.daysUntilExpiry} أيام</span>
                     <span className="text-[11px] text-cream-700 font-bold">الكمية: {b.quantity}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Low-stock / reorder alerts */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between pb-3 border-b border-cream-200">
+            <div className="flex items-center gap-2">
+              <PackageX className="w-5 h-5 text-brand-600" />
+              <h3 className="font-black text-ink-900 text-sm">أصناف قرب النفاد (إعادة الطلب)</h3>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => onNavigateTab('items')}
+                className="text-xs font-black text-brand-600 hover:text-brand-700 cursor-pointer flex items-center gap-1"
+              >
+                الأصناف <ArrowLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="badge-brand">{lowStockItems.length} صنف</span>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-2.5 max-h-72 overflow-y-auto">
+            {lowStockItems.length === 0 ? (
+              <EmptyState
+                title="لا توجد أصناف وصلت لحد إعادة الطلب"
+                icon={CheckCircle2}
+              />
+            ) : (
+              lowStockItems.map(({ item, balance }) => (
+                <div key={item.id} className="p-3 rounded-xl bg-rose-50/70 border border-rose-200 text-xs flex items-center justify-between">
+                  <div className="truncate ml-2">
+                    <div className="font-black text-rose-950 truncate">{item.nameAr}</div>
+                    <div className="text-[11px] text-rose-700 mt-0.5 font-semibold font-mono">{item.code}</div>
+                  </div>
+                  <div className="text-left font-mono shrink-0">
+                    <span className={`font-black text-sm block ${balance <= 0 ? 'text-rose-700' : 'text-amber-700'}`}>
+                      {balance <= 0 ? 'نفد المخزون' : `الرصيد ${formatNum(balance)}`}
+                    </span>
+                    <span className="text-[11px] text-cream-700 font-bold">حد الطلب: {formatNum(item.minStockLevel || 0)}</span>
                   </div>
                 </div>
               ))
