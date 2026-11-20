@@ -123,6 +123,16 @@ export const CashierView: React.FC = () => {
   const [formError, setFormError] = useState('');
   const [lastReceipt, setLastReceipt] = useState<string>('');
   const [mode, setMode] = useState<'sale' | 'return'>('sale');
+  const [invoiceDiscountPct, setInvoiceDiscountPct] = useState('');
+
+  // There's no separate "invoice-level discount" accounting field — applying
+  // one here just sets the same % on every line, reusing the exact posting
+  // path already proven for per-line discounts instead of a second, riskier
+  // code path that would touch VAT/GL computation.
+  const applyInvoiceDiscount = () => {
+    const pct = Math.max(0, Math.min(100, Number(invoiceDiscountPct) || 0));
+    setCart(prev => prev.map(l => ({ ...l, discountPct: pct })));
+  };
 
   const addItem = (itemId: string) => {
     const itm = finishedProducts.find(i => i.id === itemId);
@@ -372,6 +382,26 @@ export const CashierView: React.FC = () => {
           })}
           {cart.length === 0 && <p className="text-center text-xs text-cream-700 py-6">السلة فارغة — اضغط صنف أو امسح باركود</p>}
         </div>
+
+        {cart.length > 0 && (
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={invoiceDiscountPct}
+              onChange={e => setInvoiceDiscountPct(e.target.value)}
+              placeholder="خصم عام على الفاتورة %"
+              className="flex-1 p-2 rounded-xl border border-cream-300 text-xs"
+            />
+            <button
+              onClick={applyInvoiceDiscount}
+              className="px-3 py-2 rounded-xl bg-cream-100 hover:bg-cream-200 border border-cream-300 text-xs font-bold"
+            >
+              تطبيق على الكل
+            </button>
+          </div>
+        )}
 
         <div className="border-t border-cream-200 pt-3 space-y-1 text-sm">
           <div className="flex justify-between"><span>الإجمالي قبل الضريبة</span><span className="font-mono">{subtotal.toFixed(2)}</span></div>
