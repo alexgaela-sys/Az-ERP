@@ -412,11 +412,14 @@ export class WorkflowService {
       return loaded - sold - returned;
     };
 
-    // Check stock for all lines (including free quantities) in the SELECTED source
+    // Check stock for all lines (including free quantities) in the SELECTED source.
+    // Service items (itemType === 'service') are non-stock/billable only — they
+    // never carry inventory, cost, or a stock check.
     for (const line of params.lines) {
       const totalQtyToIssue = line.quantity + (line.freeQuantity || 0);
       if (!(totalQtyToIssue > 0)) continue;
       const item = db.items.find(i => i.id === line.itemId);
+      if (item?.itemType === 'service') continue;
       if (stockSource === 'rep_custody') {
         const available = custodyAvailable(line.itemId);
         if (available < totalQtyToIssue) {
@@ -453,6 +456,10 @@ export class WorkflowService {
     params.lines.forEach((l, idx) => {
       const totalUnits = (Number(l.quantity) || 0) + (Number(l.freeQuantity) || 0);
       if (totalUnits <= 0) return;
+      // Service items have no stock/cost pool to resolve from — they stay out
+      // of lineCosts entirely, so they contribute zero to COGS and are never
+      // asked to prove an "actual cost" (they have none).
+      if (itemsMap.get(l.itemId)?.itemType === 'service') return;
       // The stock source decides which cost pool is relieved.
       const costWarehouseId = stockSource === 'rep_custody' ? 'wh-local' : params.warehouseId;
       const resolved = InventoryEngine.resolveActualUnitCost(l.itemId, costWarehouseId, totalUnits);
@@ -585,8 +592,9 @@ export class WorkflowService {
         description: `ضريبة مخرجات فاتورة ${invoiceNumber}`,
       }] : []),
 
-      // 2. COGS side
-      {
+      // 2. COGS side — omitted entirely when the invoice has no physical
+      // stock to relieve (e.g. an all-services invoice), so no 0/0 GL noise.
+      ...(cogsTotalEGP > 0 ? [{
         id: '',
         journalEntryId: '',
         accountId: cogsAcc,
@@ -599,8 +607,7 @@ export class WorkflowService {
         exchangeRate: 1,
         costCenterId: params.channel === 'export' ? 'cc-export' : 'cc-sales',
         description: `تكلفة البضاعة المباعة لفاتورة ${invoiceNumber} (تشمل البونص الترويجي)`,
-      },
-      {
+      }, {
         id: '',
         journalEntryId: '',
         accountId: finishedInvAcc,
@@ -615,7 +622,7 @@ export class WorkflowService {
         description: stockSource === 'rep_custody'
           ? `صرف من عهدة المندوب لفاتورة ${invoiceNumber}`
           : `صرف مخزون إنتاج تام لفاتورة ${invoiceNumber}`,
-      }
+      }] : [])
     ];
 
     const jvResult = AccountingEngine.postJournal({
@@ -636,6 +643,7 @@ export class WorkflowService {
     if (stockSource === 'warehouse') {
       params.lines.forEach(line => {
         const item = itemsMap.get(line.itemId);
+        if (item?.itemType === 'service') return; // no inventory to move
         const totalQty = line.quantity + (line.freeQuantity || 0);
         InventoryEngine.recordMovement({
           itemId: line.itemId,
@@ -656,6 +664,7 @@ export class WorkflowService {
     const custodyMovements: CustodyMovement[] = [];
     if (stockSource === 'rep_custody' && custody) {
       for (const line of params.lines) {
+        if (itemsMap.get(line.itemId)?.itemType === 'service') continue; // no custody stock to move
         const totalQty = line.quantity + (line.freeQuantity || 0);
         custodyMovements.push({
           id: generateErpId('cstm'),
@@ -1954,6 +1963,11 @@ export class WorkflowService {
     const receiptLines: Array<{ itemId: string; quantity: number; unitCost: number; routing: ReturnType<typeof qualityDestinationRouting> }> = [];
     for (const [idx, l] of params.lines.entries()) {
       const item = db.items.find(i => i.id === l.itemId);
+      // Service items have no inventory to receive back — only their revenue/VAT
+      // reversal (already computed above) applies; skip the cost/receipt step
+      // entirely so returning an invoice with a service line never fails on a
+      // "no reference cost" error that a non-stock item can never satisfy.
+      if (item?.itemType === 'service') continue;
       const routing = qualityDestinationRouting(params.inspectionOverrides?.[l.itemId] || 'saleable');
       const origLine = lineEconomics[idx]?.origLine;
       let unitCost = Number(origLine?.unitCost) || 0;

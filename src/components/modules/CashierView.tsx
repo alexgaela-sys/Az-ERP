@@ -112,7 +112,7 @@ function printReceipt(opts: {
 
 export const CashierView: React.FC = () => {
   const db = erpDb.getSnapshot();
-  const finishedProducts = db.items.filter(i => i.itemType === 'finished_product' && i.active);
+  const finishedProducts = db.items.filter(i => (i.itemType === 'finished_product' || i.itemType === 'service') && i.active);
 
   const [search, setSearch] = useState('');
   const [scanInput, setScanInput] = useState('');
@@ -352,7 +352,12 @@ export const CashierView: React.FC = () => {
               onClick={() => addItem(p.id)}
               className="text-right p-3 rounded-xl border border-cream-300 bg-white hover:border-brand-400 hover:shadow-md transition-all"
             >
-              <div className="font-bold text-sm leading-5 truncate">{p.nameAr}</div>
+              <div className="font-bold text-sm leading-5 truncate flex items-center gap-1">
+                {p.nameAr}
+                {p.itemType === 'service' && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-black shrink-0">خدمة</span>
+                )}
+              </div>
               <div className="text-[11px] text-cream-700 font-mono mt-1" dir="ltr">
                 {p.barcode || p.code}
               </div>

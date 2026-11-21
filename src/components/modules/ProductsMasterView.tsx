@@ -292,6 +292,7 @@ export const ProductsMasterView: React.FC = () => {
               <option value="finished_product">المنتجات التامة فقط</option>
               <option value="raw_material">المواد الخام فقط</option>
               <option value="packaging_material">مواد التعبئة والتغليف</option>
+              <option value="service">الخدمات فقط</option>
             </select>
 
             {/* Family Filter */}
@@ -544,7 +545,13 @@ export const ProductsMasterView: React.FC = () => {
                     <option value="finished_product">منتج تام الصنع (Finished)</option>
                     <option value="raw_material">مادة خام أولية (Raw)</option>
                     <option value="packaging_material">مادة تعبئة وتغليف (Packaging)</option>
+                    <option value="service">خدمة (بدون مخزون — Service)</option>
                   </select>
+                  {itemType === 'service' && (
+                    <p className="text-[10px] text-indigo-600 mt-1">
+                      صنف "خدمة" لا يُحسب له مخزون أو تكلفة بضاعة مباعة — يُباع ويُفوتر مباشرة (صيانة، نقل، استشارة...).
+                    </p>
+                  )}
                 </div>
               </div>
 

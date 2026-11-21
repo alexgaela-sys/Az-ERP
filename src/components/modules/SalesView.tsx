@@ -65,7 +65,7 @@ export const SalesView: React.FC = () => {
   const [creditAlert, setCreditAlert] = useState<string | null>(null);
 
   const customers = db.customers.filter(c => c.active);
-  const finishedProducts = db.items.filter(i => i.itemType === 'finished_product' && i.active);
+  const finishedProducts = db.items.filter(i => (i.itemType === 'finished_product' || i.itemType === 'service') && i.active);
   const salesReps = db.salesReps.filter(r => r.active);
   const warehouses = db.warehouses.filter(w => w.type === 'local_finished' || w.type === 'export_finished');
   // F20: open custodies available as a stock source

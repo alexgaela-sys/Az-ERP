@@ -123,13 +123,21 @@ export interface Branch {
   active: boolean;
 }
 
-export type ItemType = 
+export type ItemType =
   | 'finished_product'
   | 'raw_material'
   | 'packaging_material'
   | 'damaged'
   | 'scrap'
-  | 'recyclable';
+  | 'recyclable'
+  /**
+   * Non-stock billable item (labor, consulting, delivery fee, maintenance
+   * visit, ...). Never carries inventory, cost, or a stock check — it is
+   * sellable from Sales/Cashier exactly like a product, but workflows.ts
+   * createSalesInvoice()/postSalesReturn() skip every inventory/FIFO-cost
+   * step for it (see the itemType === 'service' guards there).
+   */
+  | 'service';
 
 export type ProductFamily = 'Single' | 'Duo';
 
