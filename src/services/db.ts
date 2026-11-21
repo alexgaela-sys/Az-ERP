@@ -1,6 +1,6 @@
 // Real Relational Database Store with Referencing, Transactions, and Persistence
 import { 
-  Company, Warehouse, Item, Unit, UnitConversion, Batch, BomHeader, BomLine, 
+  Company, Warehouse, Branch, Item, Unit, UnitConversion, Batch, BomHeader, BomLine,
   ProductionOrder, ProductionConsumption, ProductionWaste, QualityInspection, 
   Customer, Supplier, SalesRepresentative, RepresentativeCustody, CustodyMovement, 
   SalesInvoice, SalesInvoiceLine, SalesReturn, SalesReturnLine, PurchaseInvoice, 
@@ -78,6 +78,9 @@ export function nextDocNumber(
 export interface ERPDatabaseSchema {
   company: Company;
   warehouses: Warehouse[];
+  /** Optional multi-branch layer on top of warehouses. Empty for every company
+   *  that hasn't explicitly added a second branch — see types/erp.ts Branch. */
+  branches: Branch[];
   items: Item[];
   units: Unit[];
   unitConversions: UnitConversion[];
@@ -1298,6 +1301,7 @@ export function createEmptyDatabase(options?: { demo?: boolean }): ERPDatabaseSc
   const fresh: ERPDatabaseSchema = {
     company: { ...INITIAL_COMPANY },
     warehouses: INITIAL_WAREHOUSES.map(w => ({ ...w })),
+    branches: [],
     // A brand-new company starts with NO items/BOMs/suppliers/sales reps — those
     // are specific to one business, never a sane default for "any activity".
     // The snack-factory catalog below is only seeded when demo data is explicitly
@@ -1797,6 +1801,7 @@ export function normalizeStoredDatabase(parsed: any): ERPDatabaseSchema {
     },
     company: parsed.company || INITIAL_COMPANY,
     warehouses: parsed.warehouses?.length ? parsed.warehouses : INITIAL_WAREHOUSES,
+    branches: Array.isArray(parsed.branches) ? parsed.branches : [],
     items: loadedItems,
     boms: loadedBoms,
     bomLines: loadedBomLines,

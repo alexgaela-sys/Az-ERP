@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { 
-  Settings, Building2, Boxes, Package, 
+import {
+  Settings, Building2, Boxes, Package, Network,
   Layers, RefreshCw, Download, Upload, Check, Plus,
   Trash2, Sparkles, ShieldCheck, AlertTriangle, FileText, UserCheck, Lock
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import { AuthService } from '../../services/auth';
 import { PermissionService } from '../../services/permissions';
 import { CompanySettingsSection } from './settings/CompanySettingsSection';
 import { WarehousesSection } from './settings/WarehousesSection';
+import { BranchesSection } from './settings/BranchesSection';
 import { StorekeepersSection } from './settings/StorekeepersSection';
 import { InvoiceDesignSection } from './settings/InvoiceDesignSection';
 
@@ -20,7 +21,7 @@ interface SettingsViewProps {
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ openTestRunner }) => {
   const db = erpDb.getSnapshot();
-  const [activeTab, setActiveTab] = useState<'company' | 'warehouses' | 'storekeepers' | 'invoice' | 'products' | 'mappings' | 'data'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'warehouses' | 'branches' | 'storekeepers' | 'invoice' | 'products' | 'mappings' | 'data'>('company');
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [dataMessage, setDataMessage] = useState<string | null>(null);
 
@@ -176,6 +177,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ openTestRunner }) =>
         {([
           ['company', 'بيانات الشركة', Building2],
           ['warehouses', `المستودعات (${db.warehouses.length})`, Boxes],
+          ['branches', db.branches.length ? `الفروع (${db.branches.length})` : 'الفروع', Network],
           ['storekeepers', 'أمناء المخازن', UserCheck],
           ['invoice', 'تصميم الفواتير', FileText],
           ['products', `سجل المنتجات (${finishedProducts.length})`, Package],
@@ -197,6 +199,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ openTestRunner }) =>
 
       {activeTab === 'company' && <CompanySettingsSection />}
       {activeTab === 'warehouses' && <WarehousesSection />}
+      {activeTab === 'branches' && <BranchesSection />}
       {activeTab === 'storekeepers' && <StorekeepersSection />}
       {activeTab === 'invoice' && <InvoiceDesignSection />}
 

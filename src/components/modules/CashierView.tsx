@@ -125,6 +125,16 @@ export const CashierView: React.FC = () => {
   const [mode, setMode] = useState<'sale' | 'return'>('sale');
   const [invoiceDiscountPct, setInvoiceDiscountPct] = useState('');
 
+  // Multi-branch (opt-in, backward-compatible): with 0 or 1 active branch
+  // this selector never renders and the sale keeps using the default retail
+  // warehouse exactly as before. It only appears once a SECOND active branch
+  // has been explicitly created from Settings → "الفروع".
+  const activeBranches = db.branches.filter(b => b.active);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(activeBranches[0]?.id || '');
+  const effectiveWarehouseId = activeBranches.length > 1
+    ? (activeBranches.find(b => b.id === selectedBranchId)?.warehouseId || warehouseForChannel('retail'))
+    : warehouseForChannel('retail');
+
   // There's no separate "invoice-level discount" accounting field — applying
   // one here just sets the same % on every line, reusing the exact posting
   // path already proven for per-line discounts instead of a second, riskier
@@ -215,7 +225,7 @@ export const CashierView: React.FC = () => {
 
     const customerId = ensureCashCustomer();
     const session = AuthService.getCurrentSession();
-    const warehouseId = warehouseForChannel('retail');
+    const warehouseId = effectiveWarehouseId;
 
     const res = WorkflowService.createSalesInvoice({
       customerId,
@@ -278,12 +288,26 @@ export const CashierView: React.FC = () => {
             <Banknote className="w-5 h-5 text-brand-600" />
             <h2 className="font-black text-lg">شاشة الكاشير</h2>
           </div>
-          <button
-            onClick={() => setMode('return')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200"
-          >
-            <Undo2 className="w-3.5 h-3.5" /> مرتجع
-          </button>
+          <div className="flex items-center gap-2">
+            {activeBranches.length > 1 && (
+              <select
+                value={selectedBranchId}
+                onChange={e => setSelectedBranchId(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-cream-300 text-xs font-bold bg-white"
+                title="الفرع الذي يُباع منه"
+              >
+                {activeBranches.map(b => (
+                  <option key={b.id} value={b.id}>{b.nameAr}</option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={() => setMode('return')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200"
+            >
+              <Undo2 className="w-3.5 h-3.5" /> مرتجع
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

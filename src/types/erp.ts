@@ -95,6 +95,25 @@ export interface Warehouse {
   active: boolean;
 }
 
+/**
+ * Multi-branch (optional, opt-in). A company with zero or one branch behaves
+ * EXACTLY like before this feature existed: no branch UI appears anywhere,
+ * and sales keep using the default retail warehouse ('wh-local') exactly as
+ * they always did. Branch UI (a selector in the Cashier screen, a branches
+ * list in Settings reports) only shows itself once a SECOND branch has been
+ * explicitly created by the user — see src/services/companySettings.ts
+ * createBranch() and src/components/modules/CashierView.tsx.
+ */
+export interface Branch {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn?: string;
+  /** The warehouse this branch sells/dispenses stock from (its own point-of-sale stock pool). */
+  warehouseId: string;
+  active: boolean;
+}
+
 export type ItemType = 
   | 'finished_product'
   | 'raw_material'

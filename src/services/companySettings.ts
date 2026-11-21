@@ -18,7 +18,7 @@ import { erpDb, generateErpId, DEFAULT_INVOICE_TEMPLATE } from './db';
 import { AuthorizationService } from './authorization';
 import { ALL_MODULES, ASSIGNABLE_ACTIONS, ModuleKey } from './permissions';
 import {
-  Company, Warehouse, WarehouseType, InvoiceTemplateSettings, InvoiceAlignment,
+  Company, Warehouse, WarehouseType, Branch, InvoiceTemplateSettings, InvoiceAlignment,
   User, RoleName, PermissionAction,
 } from '../types/erp';
 
@@ -484,6 +484,107 @@ export class CompanySettingsService {
         module: 'إعدادات الشركة والتخصيص', action: 'cancel', recordId: warehouseId,
         previousValue: jsonForAudit({ code: existing.code, nameAr: existing.nameAr, type: existing.type }),
         description: `حذف مستودع غير مستخدم ${existing.code} — ${existing.nameAr} (لا توجد حركات تاريخية)`,
+      });
+    });
+
+    return { success: true };
+  }
+
+  // ============================ Branches (opt-in multi-branch) ============================
+  //
+  // A company with zero or one branch sees NOTHING different: no branch
+  // selector, no branches list in reports, sales keep using the default
+  // 'wh-local' warehouse exactly as before. The branch UI (CashierView
+  // selector, branch-filtered views) only turns itself on once a SECOND
+  // branch exists — see getBranches()/createBranch() call sites.
+
+  public static getBranches(): Branch[] {
+    return erpDb.getSnapshot().branches;
+  }
+
+  public static createBranch(params: {
+    nameAr: string; nameEn?: string; warehouseId: string; active?: boolean;
+    userId?: string; userName?: string; isTest?: boolean;
+  }): { success: boolean; branch?: Branch; error?: string } {
+    const guard = AuthorizationService.enforce('settings', 'edit', params);
+    if (!guard.allowed) return { success: false, error: guard.error };
+
+    const db = erpDb.getSnapshot();
+    const nameAr = trimTo(params.nameAr, 120);
+    if (!nameAr) return { success: false, error: 'اسم الفرع مطلوب' };
+    if (db.branches.some(b => b.nameAr.trim() === nameAr)) {
+      return { success: false, error: `يوجد فرع آخر بنفس الاسم (${nameAr})` };
+    }
+    const warehouse = db.warehouses.find(w => w.id === params.warehouseId);
+    if (!warehouse) return { success: false, error: 'المستودع المختار للفرع غير موجود' };
+
+    const seq = db.branches.length + 1;
+    const branch: Branch = {
+      id: generateErpId('br'),
+      code: `BR-${String(seq).padStart(2, '0')}`,
+      nameAr,
+      nameEn: trimTo(params.nameEn, 160) || undefined,
+      warehouseId: warehouse.id,
+      active: params.active !== false,
+    };
+
+    erpDb.mutate(draft => {
+      draft.branches.push(branch);
+      draft.auditLogs.push({
+        id: generateErpId('aud'),
+        timestamp: new Date().toISOString(),
+        userId: guard.userId, userName: guard.userName,
+        module: 'إعدادات الشركة والتخصيص', action: 'create', recordId: branch.id,
+        newValue: jsonForAudit({ code: branch.code, nameAr: branch.nameAr, warehouseId: branch.warehouseId }),
+        description: `إضافة فرع جديد ${branch.code} — ${branch.nameAr}`,
+      });
+    });
+
+    return { success: true, branch };
+  }
+
+  public static updateBranch(branchId: string, params: {
+    nameAr?: string; nameEn?: string; warehouseId?: string; active?: boolean;
+    userId?: string; userName?: string; isTest?: boolean;
+  }): SettingsResult {
+    const guard = AuthorizationService.enforce('settings', 'edit', params);
+    if (!guard.allowed) return { success: false, error: guard.error };
+
+    const db = erpDb.getSnapshot();
+    const existing = db.branches.find(b => b.id === branchId);
+    if (!existing) return { success: false, error: 'الفرع غير موجود' };
+
+    const patch: Partial<Branch> = {};
+    if (params.nameAr !== undefined) {
+      const nameAr = trimTo(params.nameAr, 120);
+      if (!nameAr) return { success: false, error: 'اسم الفرع مطلوب' };
+      if (db.branches.some(b => b.id !== branchId && b.nameAr.trim() === nameAr)) {
+        return { success: false, error: `يوجد فرع آخر بنفس الاسم (${nameAr})` };
+      }
+      patch.nameAr = nameAr;
+    }
+    if (params.nameEn !== undefined) patch.nameEn = trimTo(params.nameEn, 160) || undefined;
+    if (params.warehouseId !== undefined) {
+      const warehouse = db.warehouses.find(w => w.id === params.warehouseId);
+      if (!warehouse) return { success: false, error: 'المستودع المختار للفرع غير موجود' };
+      patch.warehouseId = warehouse.id;
+    }
+    if (params.active !== undefined) patch.active = params.active;
+
+    const changed = (Object.keys(patch) as Array<keyof Branch>).filter(k => existing[k] !== patch[k]);
+    if (changed.length === 0) return { success: false, error: 'لا توجد تغييرات جديدة لحفظها' };
+
+    erpDb.mutate(draft => {
+      const b = draft.branches.find(x => x.id === branchId);
+      if (!b) return;
+      Object.assign(b, patch);
+      draft.auditLogs.push({
+        id: generateErpId('aud'),
+        timestamp: new Date().toISOString(),
+        userId: guard.userId, userName: guard.userName,
+        module: 'إعدادات الشركة والتخصيص', action: 'edit', recordId: branchId,
+        newValue: jsonForAudit(patch),
+        description: `تعديل بيانات الفرع ${existing.code}`,
       });
     });
 
