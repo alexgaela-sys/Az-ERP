@@ -143,6 +143,15 @@ export const UsersView: React.FC = () => {
     alert(r.ok ? 'تم تغيير كلمة المرور' : r.messageAr);
   };
 
+  // Opt-in multi-branch: only meaningful (and only shown) once a second
+  // branch exists — see src/components/modules/CashierView.tsx.
+  const handleSetBranch = (u: User, branchId: string) => {
+    const res = MasterDataService.setUserBranch(u.id, branchId || null, {
+      userId: 'usr-admin', userName: 'المشرف العام (Admin)',
+    });
+    if (!res.success) alert(res.error || 'تعذر تعيين الفرع');
+  };
+
   const handleToggleActive = async (u: User) => {
     if (busy) return;
     const next = !u.active;
@@ -246,6 +255,7 @@ export const UsersView: React.FC = () => {
               <th className="p-3.5">اسم الدخول (Username)</th>
               <th className="p-3.5">{CLOUD_STORAGE_MODE ? 'حساب الدخول' : 'كلمة المرور'}</th>
               <th className="p-3.5">الدور الوظيفي (Role)</th>
+              {db.branches.length > 1 && <th className="p-3.5 text-center">الفرع</th>}
               <th className="p-3.5 text-center">الحالة</th>
               <th className="p-3.5 text-center">آخر تسجيل دخول</th>
               <th className="p-3.5 text-center">الإجراءات</th>
@@ -280,6 +290,21 @@ export const UsersView: React.FC = () => {
                     {u.role}
                   </span>
                 </td>
+                {db.branches.length > 1 && (
+                  <td className="p-3.5 text-center">
+                    <select
+                      value={u.branchId || ''}
+                      onChange={e => handleSetBranch(u, e.target.value)}
+                      className="px-2 py-1 rounded-lg bg-slate-50 border border-slate-300 text-[11px] font-bold"
+                      title="الفرع الذي يبيع منه هذا المستخدم في شاشة الكاشير (بدون اختيار يدوي)"
+                    >
+                      <option value="">— بدون تعيين (اختيار يدوي) —</option>
+                      {db.branches.filter(b => b.active).map(b => (
+                        <option key={b.id} value={b.id}>{b.nameAr}</option>
+                      ))}
+                    </select>
+                  </td>
+                )}
                 <td className="p-3.5 text-center">
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                     u.active ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'

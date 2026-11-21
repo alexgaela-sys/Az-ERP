@@ -507,6 +507,41 @@ export class MasterDataService {
   }
 
   /**
+   * Assigns (or clears) a cashier's branch (opt-in multi-branch). Pass
+   * branchId = null to clear it and go back to the manual branch picker
+   * (or no picker at all, if only one branch exists).
+   */
+  public static setUserBranch(userId: string, branchId: string | null, options?: GuardOptions): { success: boolean; error?: string } {
+    const g = guard({ module: 'users', action: 'edit' }, options);
+    if (!g.allowed) return { success: false, error: g.error };
+
+    const db = erpDb.getSnapshot();
+    const existing = db.users.find(u => u.id === userId);
+    if (!existing) return { success: false, error: 'المستخدم غير موجود' };
+    if (branchId && !db.branches.some(b => b.id === branchId)) {
+      return { success: false, error: 'الفرع غير موجود' };
+    }
+
+    erpDb.mutate(draft => {
+      const u = draft.users.find(x => x.id === userId);
+      if (!u) return;
+      if (branchId) u.branchId = branchId; else delete u.branchId;
+      const branchName = branchId ? db.branches.find(b => b.id === branchId)?.nameAr : null;
+      draft.auditLogs.push({
+        id: generateErpId('aud'),
+        timestamp: new Date().toISOString(),
+        userId: g.userId, userName: g.userName,
+        module: 'المستخدمون والصلاحيات', action: 'edit', recordId: userId,
+        description: branchName
+          ? `تعيين المستخدم ${existing.username} على فرع ${branchName}`
+          : `إلغاء تعيين فرع المستخدم ${existing.username}`,
+      });
+    });
+
+    return { success: true };
+  }
+
+  /**
    * Self-service profile update. A user may always edit their own contact data
    * and password; changing role/active status is a PRIVILEGED action and is only
    * applied when AuthorizationService grants 'edit' on the users module.

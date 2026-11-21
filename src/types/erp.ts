@@ -41,6 +41,15 @@ export interface User {
    * linkage and every historical record: nothing is deleted.
    */
   warehouseIds?: string[];
+  /**
+   * Cashier ↔ branch assignment (opt-in multi-branch — see types/erp.ts
+   * Branch). When set, the Cashier screen sells from this branch's warehouse
+   * automatically and never shows a branch picker to this user. Left unset
+   * for every user until branches exist; a user with no assignment still
+   * sees the manual branch selector (useful for a manager covering several
+   * branches).
+   */
+  branchId?: string;
   createdAt: string;
   lastLogin?: string;
   /** Cloud mode: id of this person's Supabase sign-in account (set when the admin creates the user). */

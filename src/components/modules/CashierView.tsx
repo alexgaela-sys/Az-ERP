@@ -126,13 +126,20 @@ export const CashierView: React.FC = () => {
   const [invoiceDiscountPct, setInvoiceDiscountPct] = useState('');
 
   // Multi-branch (opt-in, backward-compatible): with 0 or 1 active branch
-  // this selector never renders and the sale keeps using the default retail
-  // warehouse exactly as before. It only appears once a SECOND active branch
-  // has been explicitly created from Settings → "الفروع".
+  // nothing below renders and the sale keeps using the default retail
+  // warehouse exactly as before. It only activates once a SECOND active
+  // branch has been explicitly created from Settings → "الفروع".
+  //
+  // A cashier assigned a branch (Users & RBAC → عمود "الفرع") always sells
+  // from that branch — no picker shown, nothing to choose wrong. The manual
+  // selector is shown only to a user with NO assigned branch (e.g. a
+  // manager covering more than one branch).
   const activeBranches = db.branches.filter(b => b.active);
-  const [selectedBranchId, setSelectedBranchId] = useState<string>(activeBranches[0]?.id || '');
+  const assignedBranch = activeBranches.find(b => b.id === AuthService.getCurrentSession()?.user.branchId) || null;
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(assignedBranch?.id || activeBranches[0]?.id || '');
+  const showBranchPicker = !assignedBranch && activeBranches.length > 1;
   const effectiveWarehouseId = activeBranches.length > 1
-    ? (activeBranches.find(b => b.id === selectedBranchId)?.warehouseId || warehouseForChannel('retail'))
+    ? (assignedBranch?.warehouseId || activeBranches.find(b => b.id === selectedBranchId)?.warehouseId || warehouseForChannel('retail'))
     : warehouseForChannel('retail');
 
   // There's no separate "invoice-level discount" accounting field — applying
@@ -289,7 +296,12 @@ export const CashierView: React.FC = () => {
             <h2 className="font-black text-lg">شاشة الكاشير</h2>
           </div>
           <div className="flex items-center gap-2">
-            {activeBranches.length > 1 && (
+            {assignedBranch && activeBranches.length > 1 && (
+              <span className="px-3 py-1.5 rounded-lg bg-brand-50 border border-brand-200 text-brand-800 text-xs font-bold">
+                فرع: {assignedBranch.nameAr}
+              </span>
+            )}
+            {showBranchPicker && (
               <select
                 value={selectedBranchId}
                 onChange={e => setSelectedBranchId(e.target.value)}
