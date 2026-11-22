@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Settings, Building2, Boxes, Package, Network,
   Layers, RefreshCw, Download, Upload, Check, Plus,
-  Trash2, Sparkles, ShieldCheck, AlertTriangle, FileText, UserCheck, Lock
+  Trash2, Sparkles, ShieldCheck, AlertTriangle, FileText, UserCheck, Lock, KeyRound
 } from 'lucide-react';
 import { erpDb } from '../../services/db';
 import { ProductFamily } from '../../types/erp';
@@ -14,6 +14,7 @@ import { WarehousesSection } from './settings/WarehousesSection';
 import { BranchesSection } from './settings/BranchesSection';
 import { StorekeepersSection } from './settings/StorekeepersSection';
 import { InvoiceDesignSection } from './settings/InvoiceDesignSection';
+import { LicenseSection } from './settings/LicenseSection';
 
 interface SettingsViewProps {
   openTestRunner?: () => void;
@@ -21,7 +22,7 @@ interface SettingsViewProps {
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ openTestRunner }) => {
   const db = erpDb.getSnapshot();
-  const [activeTab, setActiveTab] = useState<'company' | 'warehouses' | 'branches' | 'storekeepers' | 'invoice' | 'products' | 'mappings' | 'data'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'warehouses' | 'branches' | 'storekeepers' | 'invoice' | 'products' | 'mappings' | 'data' | 'license'>('company');
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [dataMessage, setDataMessage] = useState<string | null>(null);
 
@@ -183,6 +184,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ openTestRunner }) =>
           ['products', `سجل المنتجات (${finishedProducts.length})`, Package],
           ['mappings', 'ربط الحسابات', Layers],
           ['data', 'البيانات والنسخ الاحتياطي', ShieldCheck],
+          ['license', 'ترخيص البرنامج', KeyRound],
         ] as Array<[typeof activeTab, string, React.ComponentType<{ className?: string }>]>).map(([id, label, Icon]) => (
           <button
             key={id}
@@ -202,6 +204,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ openTestRunner }) =>
       {activeTab === 'branches' && <BranchesSection />}
       {activeTab === 'storekeepers' && <StorekeepersSection />}
       {activeTab === 'invoice' && <InvoiceDesignSection />}
+      {activeTab === 'license' && <LicenseSection />}
 
       {/* 1. Products Master */}
       {activeTab === 'products' && (
