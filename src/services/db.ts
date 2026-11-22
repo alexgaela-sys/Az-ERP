@@ -13,6 +13,7 @@ import {
   isDebitNatureCategory
 } from '../types/erp';
 import { CloudSync, SyncHost } from './cloud/syncEngine';
+import { readOfflineCache } from './cloud/offlineCache';
 
 // -----------------------------------------------------------------------------
 // Deterministic Document Numbering & ID Generation (Centralized, Collision-free)
@@ -1840,8 +1841,24 @@ class ERPDatabaseService {
   }
 
   private load(): ERPDatabaseSchema {
-    // Cloud build: start blank and untouched; the real data arrives from the server.
-    if (CLOUD_STORAGE_MODE) return createEmptyDatabase();
+    // Cloud build: normally start blank and untouched — the real data arrives
+    // from the server a moment later. But if THIS device has synced before
+    // and has an offline cache (see services/cloud/offlineCache.ts), start
+    // from that instead: it lets the app render real data (and the Cashier
+    // screen keep working) immediately even if there is no network at all
+    // right now. Any collection the cache predates still gets its normal
+    // empty seed from createEmptyDatabase() underneath it.
+    if (CLOUD_STORAGE_MODE) {
+      const cached = readOfflineCache();
+      if (cached) {
+        try {
+          return { ...createEmptyDatabase(), ...cached.db } as ERPDatabaseSchema;
+        } catch (e) {
+          console.error('Could not use the offline cloud cache, starting blank:', e);
+        }
+      }
+      return createEmptyDatabase();
+    }
     try {
       if (typeof localStorage !== 'undefined') {
         const saved = localStorage.getItem(STORAGE_KEY);

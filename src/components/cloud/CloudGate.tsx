@@ -19,6 +19,7 @@ import {
 } from '../../services/db';
 import { RemoteRejectedError, RemoteUnavailableError } from '../../services/cloud/remoteStore';
 import { getCloudRuntime } from './cloudRuntime';
+import { clearOfflineCache } from '../../services/cloud/offlineCache';
 import { erpDb, generateErpId } from '../../services/db';
 import { AuthService } from '../../services/auth';
 import { buildOwnerUser, resolveCloudIdentity } from '../../services/cloud/cloudIdentity';
@@ -404,6 +405,7 @@ export const CloudGate: React.FC<{ children: React.ReactNode }> = ({ children })
       rt.sync.stop();
       await rt.auth.signOut();
     }
+    clearOfflineCache();
     window.location.reload();
   };
 

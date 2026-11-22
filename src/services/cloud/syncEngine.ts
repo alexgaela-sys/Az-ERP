@@ -187,14 +187,55 @@ export class CloudSync {
   }
 
   /**
+   * Restores a previously-cached server position (from offlineCache.ts) BEFORE
+   * calling connect(), so connect() can resume incrementally — push whatever
+   * local edits were made offline, then pull what changed on the server —
+   * instead of doing its normal full wipe-and-reload. Must be called before
+   * connect(); has no effect afterwards.
+   */
+  primeFromCache(cache: { versions: [string, number][]; shadow: [string, string][]; cursor: number }) {
+    this.versions = new Map(cache.versions);
+    this.shadow = new Map(cache.shadow);
+    this.cursor = cache.cursor;
+  }
+
+  /** A snapshot of the current sync position, to persist as an offline cache. */
+  exportPosition(): { versions: [string, number][]; shadow: [string, string][]; cursor: number } {
+    return {
+      versions: Array.from(this.versions.entries()),
+      shadow: Array.from(this.shadow.entries()),
+      cursor: this.cursor,
+    };
+  }
+
+  /**
    * Loads everything from the server into the live database.
    * empty = true means the server holds no records yet (first-time setup).
+   *
+   * If primeFromCache() was called first (we're resuming on a device that has
+   * an offline-cached copy of the database, possibly with local edits made
+   * while disconnected), this does NOT wipe/rebuild: it pushes those local
+   * edits first (flushLoop, safe — compares against the real last-known
+   * server state) and then pulls anything that changed on the server since
+   * (the same incremental step pollOnce() uses). A device with no primed
+   * cache behaves exactly as before: a full reload from the server.
    */
   connect(): Promise<{ empty: boolean }> {
     this.stopped = false;
     return this.run(async () => {
       this.setStatus({ state: 'connecting' }, true);
       try {
+        if (this.versions.size > 0) {
+          const saved = await this.flushLoop();
+          if (saved) {
+            await this.pullChangesUnlocked();
+            if (this.status.state === 'offline') this.setStatus({ state: 'idle' }, true);
+          }
+          // saved === false: flushLoop (or a conflict's reloadUnlocked) already
+          // set the right status (offline/error/idle-with-notice) — leave it.
+          this.host.onRemoteApplied();
+          return { empty: false };
+        }
         const n = await this.reloadUnlocked();
         this.setStatus({ state: 'idle', pending: false }, true);
         return { empty: n === 0 };
@@ -468,33 +509,41 @@ export class CloudSync {
       // our own unsaved edits go out first, so a remote change can never land on top of them
       const saved = await this.flushLoop();
       if (!saved) return;
-
-      let touched = false;
-      try {
-        for (let guard = 0; guard < 200; guard++) {
-          const res = await this.store.changesSince(this.cursor, 500);
-          if (res.status === 'reset') {
-            await this.reloadUnlocked();
-            return;
-          }
-          if (res.status === 'forbidden') {
-            this.setStatus({ state: 'error', message: MSG_FORBIDDEN, code: 'forbidden' }, true);
-            return;
-          }
-          for (const ch of res.changes) {
-            if (this.applyRemoteChange(ch)) touched = true;
-          }
-          this.cursor = Math.max(this.cursor, res.last);
-          if (!res.more) break;
-        }
-      } catch (e) {
-        this.failFromError(e);
-        return;
-      } finally {
-        if (touched) this.host.onRemoteApplied();
-      }
+      await this.pullChangesUnlocked();
       if (this.status.state === 'offline') this.setStatus({ state: 'idle' }, true);
     });
+  }
+
+  /**
+   * Incremental pull (changesSince this.cursor), applied record-by-record —
+   * never wipes the in-memory database. Shared by pollOnce() and by
+   * connect()'s primed-resume path. Caller must already hold the run() lock.
+   */
+  private async pullChangesUnlocked(): Promise<void> {
+    let touched = false;
+    try {
+      for (let guard = 0; guard < 200; guard++) {
+        const res = await this.store.changesSince(this.cursor, 500);
+        if (res.status === 'reset') {
+          await this.reloadUnlocked();
+          return;
+        }
+        if (res.status === 'forbidden') {
+          this.setStatus({ state: 'error', message: MSG_FORBIDDEN, code: 'forbidden' }, true);
+          return;
+        }
+        for (const ch of res.changes) {
+          if (this.applyRemoteChange(ch)) touched = true;
+        }
+        this.cursor = Math.max(this.cursor, res.last);
+        if (!res.more) break;
+      }
+    } catch (e) {
+      this.failFromError(e);
+      return;
+    } finally {
+      if (touched) this.host.onRemoteApplied();
+    }
   }
 
   /** returns true when the in-memory database changed */

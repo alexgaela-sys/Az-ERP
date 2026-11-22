@@ -1,14 +1,20 @@
 /*
- * YZ ERP service worker — MINIMAL & SAFE.
+ * YZ ERP service worker.
  *
- * Purpose: PWA installability (Chrome requires a fetch handler for the
- * install prompt). It intentionally does NOT cache any runtime responses,
- * so the ERP's localStorage-backed database, sessions, and all mutations
- * are untouched. Offline behavior is identical to today (browser cache).
+ * Purpose: PWA installability AND a real offline app shell. It caches the
+ * app's OWN static assets (the hashed JS/CSS bundle Vite builds, fonts,
+ * icons) as they are successfully fetched, so a later reload with NO
+ * network at all still loads the app's code — this is what lets the
+ * Cashier screen open at all when the shop's internet is down. It never
+ * caches a cross-origin request (Supabase API calls), so the ERP's actual
+ * data still only ever comes from the live server or the app's own
+ * in-memory/localStorage cache (see src/services/db.ts) — this file only
+ * makes the APP ITSELF loadable offline, never the business data.
  */
-// v2: bumped so devices that already installed the old SnakDip manifest
-// (name/icons/theme-color) are forced to refetch the rebranded one.
-const CACHE_NAME = 'yz-erp-static-v2';
+// v3: now caches same-origin static assets on success (previously only
+// index.html was cached, so a true offline reload could serve the shell
+// but not its own JS bundle). Bumped so devices on the old worker refresh.
+const CACHE_NAME = 'yz-erp-static-v3';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -27,8 +33,12 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Network-first for navigations with a shell fallback; pass-through for
-// everything else. No mutable ERP data is ever stored.
+// Network-first for navigations with a shell fallback. Same-origin static
+// assets are also network-first, but a successful response is cached so a
+// later request with NO network can still be served — this is what makes
+// the built JS/CSS bundle (and anything else the app loads from itself)
+// available offline. A cross-origin request (Supabase, fonts CDN, etc.) is
+// never cached here and simply fails like a normal fetch would.
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -46,5 +56,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(fetch(req).catch(() => caches.match(req)));
+  const sameOrigin = new URL(req.url).origin === self.location.origin;
+  if (!sameOrigin) {
+    event.respondWith(fetch(req));
+    return;
+  }
+
+  event.respondWith(
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(req, copy)).catch(() => undefined);
+        }
+        return res;
+      })
+      .catch(() => caches.match(req))
+  );
 });
