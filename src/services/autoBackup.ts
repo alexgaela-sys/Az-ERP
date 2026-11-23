@@ -22,9 +22,17 @@ const FIRST_RUN_DELAY_MS = 8000; // let the app finish loading first
 declare global {
   interface Window {
     electronBackup?: {
-      save: (filename: string, content: string) => Promise<{ ok: boolean; path?: string; folder?: string; error?: string }>;
+      save: (filename: string, content: string) => Promise<{
+        ok: boolean; path?: string; folder?: string; error?: string;
+        drive?: { ok: boolean; folder: string; error?: string } | null;
+      }>;
       list: () => Promise<{ ok: boolean; folder?: string; files?: string[]; error?: string }>;
       openFolder: () => Promise<{ ok: boolean; error?: string }>;
+      // Second backup destination — a plain folder the person picks (in
+      // practice, their local Google Drive/OneDrive/Dropbox sync folder).
+      pickDriveFolder: () => Promise<{ ok: boolean; folder?: string; canceled?: boolean; error?: string }>;
+      getDriveFolder: () => Promise<{ ok: boolean; folder: string | null }>;
+      clearDriveFolder: () => Promise<{ ok: boolean }>;
     };
   }
 }

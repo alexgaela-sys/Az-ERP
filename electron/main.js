@@ -3,7 +3,7 @@
 // desktop window. No network server, no cloud mode — all data lives in this
 // computer's app storage (same local-storage engine the browser build uses,
 // since Electron's renderer is still a Chromium browser).
-const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -75,6 +75,33 @@ function buildMenu() {
 // never inside the install folder, which may not be writable.
 const BACKUPS_DIR = () => path.join(app.getPath('userData'), 'backups');
 const MAX_BACKUPS = 60; // ~2 months of daily snapshots before the oldest is pruned
+const CONFIG_FILE = () => path.join(app.getPath('userData'), 'backup-config.json');
+
+// Second backup destination: a folder the person picks themselves — in
+// practice, their local Google Drive / OneDrive / Dropbox desktop sync
+// folder. We never talk to any cloud API or store any account credentials;
+// we just also drop the exact same backup file into that plain folder on
+// disk, and whichever sync client is already watching it (if any) uploads
+// it on its own, same as any other file the person saves there.
+function readBackupConfig() {
+  try {
+    const raw = fs.readFileSync(CONFIG_FILE(), 'utf-8');
+    const parsed = JSON.parse(raw);
+    return { driveFolder: typeof parsed.driveFolder === 'string' ? parsed.driveFolder : null };
+  } catch {
+    return { driveFolder: null };
+  }
+}
+
+function writeBackupConfig(cfg) {
+  try {
+    fs.mkdirSync(path.dirname(CONFIG_FILE()), { recursive: true });
+    fs.writeFileSync(CONFIG_FILE(), JSON.stringify(cfg, null, 2), 'utf-8');
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 ipcMain.handle('backup:save', async (_event, { filename, content }) => {
   try {
@@ -87,10 +114,51 @@ ipcMain.handle('backup:save', async (_event, { filename, content }) => {
       const oldest = files.shift();
       try { fs.unlinkSync(path.join(dir, oldest)); } catch { /* best-effort */ }
     }
-    return { ok: true, path: path.join(dir, safeName), folder: dir };
+
+    // Best-effort copy into the configured Drive/OneDrive/Dropbox folder, if
+    // any — never fails the primary (local) backup if this one has trouble
+    // (folder unplugged, sync client uninstalled, permissions, ...).
+    let driveResult = null;
+    const { driveFolder } = readBackupConfig();
+    if (driveFolder) {
+      try {
+        fs.mkdirSync(driveFolder, { recursive: true });
+        fs.writeFileSync(path.join(driveFolder, safeName), String(content), 'utf-8');
+        driveResult = { ok: true, folder: driveFolder };
+      } catch (e) {
+        driveResult = { ok: false, folder: driveFolder, error: String((e && e.message) || e) };
+      }
+    }
+
+    return { ok: true, path: path.join(dir, safeName), folder: dir, drive: driveResult };
   } catch (e) {
     return { ok: false, error: String((e && e.message) || e) };
   }
+});
+
+ipcMain.handle('backup:pickDriveFolder', async () => {
+  try {
+    const win = BrowserWindow.getFocusedWindow();
+    const res = await dialog.showOpenDialog(win, {
+      title: 'اختر مجلد Google Drive (أو OneDrive / Dropbox) على جهازك',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (res.canceled || !res.filePaths?.[0]) return { ok: false, canceled: true };
+    const folder = res.filePaths[0];
+    writeBackupConfig({ driveFolder: folder });
+    return { ok: true, folder };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+});
+
+ipcMain.handle('backup:getDriveFolder', async () => {
+  return { ok: true, folder: readBackupConfig().driveFolder };
+});
+
+ipcMain.handle('backup:clearDriveFolder', async () => {
+  writeBackupConfig({ driveFolder: null });
+  return { ok: true };
 });
 
 ipcMain.handle('backup:list', async () => {
