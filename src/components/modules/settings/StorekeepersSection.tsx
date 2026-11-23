@@ -204,6 +204,9 @@ export const StorekeepersSection: React.FC = () => {
 
             <div>
               <div className="text-[11px] font-bold text-slate-700 mb-1">المستودعات المسؤول عنها *</div>
+              <p className="text-[10px] text-slate-500 mb-1.5">
+                الأمين يرى ويعدّل فقط المستودعات المحددة هنا في شاشة المخزون (الأرصدة، الجرد، التحويلات) — ترك الكل بدون تحديد يعني صلاحية على كل المستودعات.
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {db.warehouses.map(wh => (
                   <label key={wh.id} className={`flex items-center gap-2 p-2 rounded-xl border text-[11px] font-bold cursor-pointer ${form.warehouseIds.includes(wh.id) ? 'border-slate-900 bg-slate-50 text-slate-900' : 'border-slate-200 text-slate-600'} ${wh.active ? '' : 'opacity-60'}`}>

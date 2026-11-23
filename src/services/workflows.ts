@@ -2748,6 +2748,13 @@ export class WorkflowService {
     if (!warehouse) return { success: false, error: 'المستودع غير موجود' };
     if (!params.lines || params.lines.length === 0) return { success: false, error: 'لا توجد بنود جرد' };
 
+    // A storekeeper restricted to specific warehouses (Settings → أمناء
+    // المخازن) may not post a count for a warehouse outside that list.
+    const whGuard = AuthorizationService.enforceWarehouse('inventory', 'create', params.warehouseId, {
+      userId: params.userId, userName: params.userName, isTest: params.isTest,
+    });
+    if (!whGuard.allowed) return { success: false, error: whGuard.error };
+
     const countId = generateErpId('cnt');
     const countNumber = nextDocNumber(erpDb.getSnapshot() as unknown as Record<string, unknown>, 'inventoryCounts', 'STK-CNT', 4, 'countNumber');
 

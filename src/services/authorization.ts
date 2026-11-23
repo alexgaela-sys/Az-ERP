@@ -110,6 +110,36 @@ export class AuthorizationService {
     return { allowed: true, userId: options?.userId || this.SYSTEM_USER_ID, userName: options?.userName || 'System Runner' };
   }
 
+  /**
+   * Warehouse-scoped guard: first enforces the ordinary module/action
+   * permission, then — only for a user explicitly restricted to specific
+   * warehouses (User.warehouseIds, set from Settings → أمناء المخازن) —
+   * also rejects a warehouseId outside that list. An empty/absent
+   * warehouseIds means "no restriction", so every user who predates this
+   * feature (and every manager/admin who was never scoped) is unaffected.
+   */
+  public static enforceWarehouse(
+    module: ModuleKey,
+    action: PermissionAction,
+    warehouseId: string,
+    options?: GuardOptions,
+  ): GuardResult {
+    const base = this.enforce(module, action, options);
+    if (!base.allowed) return base;
+    const db = erpDb.getSnapshot();
+    const user = db.users.find(u => u.id === base.userId);
+    if (user && Array.isArray(user.warehouseIds) && user.warehouseIds.length > 0 && !user.warehouseIds.includes(warehouseId)) {
+      const whName = db.warehouses.find(w => w.id === warehouseId)?.nameAr || warehouseId;
+      return {
+        allowed: false,
+        error: `لا تملك صلاحية على المستودع (${whName}) — محصور حسابك على مستودعات محددة من إعدادات أمناء المخازن`,
+        userId: base.userId,
+        userName: base.userName,
+      };
+    }
+    return base;
+  }
+
   /** Convenience: enforce then return the resolved user ids/names for audit logs. */
   public static enforceOrThrow(module: ModuleKey, action: PermissionAction, options?: GuardOptions): GuardResult {
     const res = this.enforce(module, action, options);

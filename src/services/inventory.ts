@@ -2,6 +2,7 @@
 // and TRUE FIFO Multi-Batch Costing (actual issued cost is computed from the batches consumed).
 import { erpDb, generateErpId } from './db';
 import { InventoryMovementType, InventoryTransaction, Batch, Item, Warehouse } from '../types/erp';
+import { AuthorizationService } from './authorization';
 
 export interface StockMovementRequest {
   itemId: string;
@@ -497,6 +498,17 @@ export class InventoryEngine {
     const target = db.warehouses.find(w => w.id === targetWarehouseId);
     if (!source) return { success: false, error: 'مستودع المصدر غير موجود' };
     if (!target) return { success: false, error: 'مستودع الوجهة غير موجود' };
+
+    // A storekeeper restricted to specific warehouses (Settings → أمناء
+    // المخازن) must be authorized on AT LEAST ONE side of the transfer (e.g.
+    // a wh-local keeper may send stock out to wh-export, or receive into
+    // wh-local from anywhere) — both sides outside their list is refused.
+    // Unrestricted users (empty warehouseIds) are unaffected either way.
+    const sourceGuard = AuthorizationService.enforceWarehouse('inventory', 'edit', sourceWarehouseId);
+    const targetGuard = AuthorizationService.enforceWarehouse('inventory', 'edit', targetWarehouseId);
+    if (!sourceGuard.allowed && !targetGuard.allowed) {
+      return { success: false, error: sourceGuard.error || targetGuard.error };
+    }
 
     const qty = Number(quantity) || 0;
     if (qty <= 0) return { success: false, error: 'كمية التحويل يجب أن تكون أكبر من صفر' };

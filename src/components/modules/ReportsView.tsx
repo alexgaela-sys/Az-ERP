@@ -71,6 +71,33 @@ export const ReportsView: React.FC<{
   const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
   const [allPeriods, setAllPeriods] = useState(true);
 
+  // Quick period shortcuts — mainly for a fast "monthly profit" look: these
+  // set the same from/to/allPeriods the manual pickers above use, so every
+  // period-aware report (income statement, VAT, sales analysis...) follows.
+  // The two month presets also jump straight to the income statement (P&L),
+  // since that is what "هذا الشهر / الشهر الماضي" is almost always asked for.
+  const applyQuickPeriod = (kind: 'this_month' | 'last_month' | 'this_year' | 'all') => {
+    const now = new Date();
+    const toIso = (d: Date) => d.toISOString().split('T')[0];
+    if (kind === 'all') {
+      setAllPeriods(true);
+      return;
+    }
+    setAllPeriods(false);
+    if (kind === 'this_month') {
+      setFromDate(toIso(new Date(now.getFullYear(), now.getMonth(), 1)));
+      setToDate(toIso(now));
+      setSelectedReport('income_statement');
+    } else if (kind === 'last_month') {
+      setFromDate(toIso(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+      setToDate(toIso(new Date(now.getFullYear(), now.getMonth(), 0)));
+      setSelectedReport('income_statement');
+    } else if (kind === 'this_year') {
+      setFromDate(toIso(new Date(now.getFullYear(), 0, 1)));
+      setToDate(toIso(now));
+    }
+  };
+
   // ---------- ITEM 7 / 10-11 / 13 / 18: report derivations ----------
   // ITEM 13 — expiry status uses the CONFIGURED threshold from settings,
   // never a hardcoded "10 days".
@@ -326,40 +353,59 @@ export const ReportsView: React.FC<{
       </div>
 
       {/* Period filter */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 flex flex-col sm:flex-row sm:items-end gap-3">
-        <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
-          <input
-            type="checkbox"
-            checked={allPeriods}
-            onChange={(e) => setAllPeriods(e.target.checked)}
-            className="w-4 h-4 accent-slate-900"
-          />
-          كل الفترات (تراكمي)
-        </label>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <Calendar className="w-4 h-4" />
-          <span className="font-bold text-slate-700">من</span>
-          <input
-            type="date"
-            value={fromDate}
-            disabled={allPeriods}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="p-2 rounded-xl bg-slate-50 border border-slate-300 text-xs disabled:opacity-50"
-          />
-          <span className="font-bold text-slate-700">إلى</span>
-          <input
-            type="date"
-            value={toDate}
-            disabled={allPeriods}
-            onChange={(e) => setToDate(e.target.value)}
-            className="p-2 rounded-xl bg-slate-50 border border-slate-300 text-xs disabled:opacity-50"
-          />
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-bold text-slate-500 ml-1">فترات سريعة:</span>
+          {([
+            ['هذا الشهر', () => applyQuickPeriod('this_month')],
+            ['الشهر الماضي', () => applyQuickPeriod('last_month')],
+            ['هذه السنة', () => applyQuickPeriod('this_year')],
+            ['كل الفترات', () => applyQuickPeriod('all')],
+          ] as Array<[string, () => void]>).map(([label, fn]) => (
+            <button
+              key={label}
+              onClick={fn}
+              className="px-3 py-1.5 rounded-xl text-[11px] font-bold border border-slate-300 text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <p className="text-[11px] text-slate-500 sm:mr-auto">
-          {allPeriods
-            ? 'التقارير تُحسب على كامل الحركات المرحلة (تراكمي)'
-            : 'قائمة الدخل وضريبة القيمة المضافة تُحسب على الفترة المحددة فقط، بينما الميزانية وميزان المراجعة تظل تراكمية'}
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+            <input
+              type="checkbox"
+              checked={allPeriods}
+              onChange={(e) => setAllPeriods(e.target.checked)}
+              className="w-4 h-4 accent-slate-900"
+            />
+            كل الفترات (تراكمي)
+          </label>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <Calendar className="w-4 h-4" />
+            <span className="font-bold text-slate-700">من</span>
+            <input
+              type="date"
+              value={fromDate}
+              disabled={allPeriods}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="p-2 rounded-xl bg-slate-50 border border-slate-300 text-xs disabled:opacity-50"
+            />
+            <span className="font-bold text-slate-700">إلى</span>
+            <input
+              type="date"
+              value={toDate}
+              disabled={allPeriods}
+              onChange={(e) => setToDate(e.target.value)}
+              className="p-2 rounded-xl bg-slate-50 border border-slate-300 text-xs disabled:opacity-50"
+            />
+          </div>
+          <p className="text-[11px] text-slate-500 sm:mr-auto">
+            {allPeriods
+              ? 'التقارير تُحسب على كامل الحركات المرحلة (تراكمي)'
+              : 'قائمة الدخل وضريبة القيمة المضافة تُحسب على الفترة المحددة فقط، بينما الميزانية وميزان المراجعة تظل تراكمية'}
+          </p>
+        </div>
       </div>
 
       {/* Report Selection Tabs */}

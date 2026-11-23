@@ -7,6 +7,7 @@ import {
 import { erpDb } from '../../services/db';
 import { InventoryEngine } from '../../services/inventory';
 import { WorkflowService } from '../../services/workflows';
+import { AuthService } from '../../services/auth';
 import ItemCardReport from './ItemCardReport';
 import { printDocument } from '../printUtils';
 
@@ -17,6 +18,17 @@ export const InventoryView: React.FC<{
   initialWarehouseId?: string;
 }> = ({ initialTab, initialWarehouseId }) => {
   const db = erpDb.getSnapshot();
+
+  // A storekeeper restricted to specific warehouses (Settings → أمناء
+  // المخازن, User.warehouseIds) only sees and selects those warehouses here —
+  // everyone else (empty/absent warehouseIds, e.g. managers and admins) sees
+  // every warehouse exactly as before this feature.
+  const restrictedWarehouseIds = AuthService.getCurrentSession()?.user?.warehouseIds;
+  const allowedWarehouses = (restrictedWarehouseIds && restrictedWarehouseIds.length > 0)
+    ? db.warehouses.filter(w => restrictedWarehouseIds.includes(w.id))
+    : db.warehouses;
+  const defaultWarehouseId = allowedWarehouses[0]?.id || 'wh-local';
+
   const [activeTab, setActiveTab] = useState<InventoryTab>(initialTab || 'balances');
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(initialWarehouseId || 'all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,7 +40,7 @@ export const InventoryView: React.FC<{
   // ITEM 12: the scrap-sale service authorizes against the 'sales' module.
   const salesWriteAccess = useModuleWriteAccess('sales', 'المبيعات');
   const [transferItemId, setTransferItemId] = useState('');
-  const [fromWhId, setFromWhId] = useState('wh-local');
+  const [fromWhId, setFromWhId] = useState(defaultWarehouseId);
   const [toWhId, setToWhId] = useState('wh-export');
   const [transferQty, setTransferQty] = useState(10);
   const [transferNotes, setTransferNotes] = useState('');
@@ -36,7 +48,7 @@ export const InventoryView: React.FC<{
 
   // Physical Count state
   const [showCountModal, setShowCountModal] = useState(false);
-  const [countWarehouseId, setCountWarehouseId] = useState('wh-local');
+  const [countWarehouseId, setCountWarehouseId] = useState(defaultWarehouseId);
   // ITEM 9: option to include zero-balance items so missing stock can be counted too.
   const [countIncludeZero, setCountIncludeZero] = useState(false);
   const [countLines, setCountLines] = useState<Array<{
@@ -72,7 +84,7 @@ export const InventoryView: React.FC<{
   }> = [];
 
   items.forEach(item => {
-    warehouses.forEach(wh => {
+    allowedWarehouses.forEach(wh => {
       if (selectedWarehouseId !== 'all' && wh.id !== selectedWarehouseId) return;
       const batches = db.batches.filter(b => b.itemId === item.id && b.warehouseId === wh.id && b.quantity > 0);
       const qty = batches.reduce((sum, b) => sum + b.quantity, 0);
@@ -93,7 +105,7 @@ export const InventoryView: React.FC<{
   const handleOpenTransfer = () => {
     if (!writeAccess.canCreate) { alert(writeAccess.createDeniedTitle); return; }
     if (items.length > 0) setTransferItemId(items[0].id);
-    setFromWhId('wh-local');
+    setFromWhId(defaultWarehouseId);
     setToWhId('wh-export');
     setTransferQty(10);
     setTransferNotes('');
@@ -321,8 +333,8 @@ export const InventoryView: React.FC<{
                 onChange={(e) => setSelectedWarehouseId(e.target.value)}
                 className="p-1.5 rounded-xl bg-slate-50 border border-slate-300 text-xs font-semibold"
               >
-                <option value="all">كافة المستودعات الـ 5</option>
-                {warehouses.map(w => (
+                <option value="all">{restrictedWarehouseIds && restrictedWarehouseIds.length > 0 ? 'مستودعاتي' : 'كافة المستودعات'}</option>
+                {allowedWarehouses.map(w => (
                   <option key={w.id} value={w.id}>{w.nameAr} ({w.code})</option>
                 ))}
               </select>
@@ -680,7 +692,7 @@ export const InventoryView: React.FC<{
                     onChange={(e) => setFromWhId(e.target.value)}
                     className="w-full p-2 rounded-xl bg-slate-50 border border-slate-300 text-xs"
                   >
-                    {warehouses.map(w => (
+                    {allowedWarehouses.map(w => (
                       <option key={w.id} value={w.id}>{w.nameAr}</option>
                     ))}
                   </select>
@@ -758,7 +770,7 @@ export const InventoryView: React.FC<{
                   onChange={(e) => handleCountWarehouseChange(e.target.value)}
                   className="p-1.5 rounded-xl bg-slate-50 border border-slate-300 text-xs font-semibold"
                 >
-                  {db.warehouses.map(w => (
+                  {allowedWarehouses.map(w => (
                     <option key={w.id} value={w.id}>{w.code} — {w.nameAr}</option>
                   ))}
                 </select>
