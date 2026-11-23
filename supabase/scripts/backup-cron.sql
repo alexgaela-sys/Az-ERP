@@ -1,0 +1,54 @@
+-- Reference copy of the automatic cloud backup set up for this project
+-- (migration: add_automatic_erp_backups). A daily pg_cron job snapshots the
+-- whole erp_records table into app_backups, keeping ~35 days of history.
+-- This file is documentation/runbook, not something to re-run as-is unless
+-- recreating the job from scratch.
+
+-- ============================================================
+-- Check recent snapshots
+-- ============================================================
+-- select id, taken_at, record_count from public.app_backups order by taken_at desc limit 10;
+
+-- ============================================================
+-- Check the cron job itself (schedule, last runs)
+-- ============================================================
+-- select * from cron.job where jobname = 'erp-daily-backup';
+-- select * from cron.job_run_details
+-- where jobid = (select jobid from cron.job where jobname = 'erp-daily-backup')
+-- order by start_time desc limit 10;
+
+-- ============================================================
+-- Take a snapshot right now (outside the schedule)
+-- ============================================================
+-- select public.take_erp_backup();
+
+-- ============================================================
+-- RESTORE from a snapshot (DESTRUCTIVE — replaces all live ERP records).
+-- Run only when truly needed, and only by the owner, directly in SQL.
+-- Always take a fresh snapshot first (above) so the pre-restore state is
+-- itself recoverable.
+-- ============================================================
+-- begin;
+--   select public.take_erp_backup(); -- safety snapshot of current state first
+--
+--   delete from public.erp_records;
+--
+--   insert into public.erp_records (collection, id, version, data, updated_at, updated_by)
+--   select
+--     (rec->>'collection')::text,
+--     (rec->>'id')::text,
+--     (rec->>'version')::bigint,
+--     (rec->'data'),
+--     (rec->>'updated_at')::timestamptz,
+--     nullif(rec->>'updated_by', '')::uuid
+--   from public.app_backups, jsonb_array_elements(records) as rec
+--   where app_backups.id = 'THE-BACKUP-ID-TO-RESTORE';
+--
+--   -- Clearing erp_changes makes every connected device's next poll see
+--   -- p_after > head (0) in erp_changes_since() and get back status:'reset',
+--   -- which the sync engine already handles by reloading fresh from
+--   -- erp_records (src/services/cloud/syncEngine.ts's reloadUnlocked(),
+--   -- called from pullChangesUnlocked()) — exactly what's wanted after a
+--   -- restore, verified against the live erp_changes_since() definition.
+--   truncate table public.erp_changes restart identity;
+-- commit;

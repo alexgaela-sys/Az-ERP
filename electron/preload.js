@@ -1,5 +1,12 @@
-// No privileged API is exposed to the renderer: the app only needs normal
-// browser storage (localStorage/IndexedDB), which Electron's renderer
-// already provides like any Chromium page. Kept as an empty, explicit
-// preload (contextIsolation stays on) so adding a native bridge later
-// (e.g. direct local file export/import) has an obvious place to go.
+// Exposes one narrow, explicit bridge to the renderer: local backup-file
+// I/O, used only by services/autoBackup.ts in the desktop build (the data
+// itself still lives in normal browser storage — localStorage/IndexedDB —
+// which Electron's renderer already provides like any Chromium page).
+// contextIsolation stays on; nothing else privileged is exposed.
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronBackup', {
+  save: (filename, content) => ipcRenderer.invoke('backup:save', { filename, content }),
+  list: () => ipcRenderer.invoke('backup:list'),
+  openFolder: () => ipcRenderer.invoke('backup:openFolder'),
+});

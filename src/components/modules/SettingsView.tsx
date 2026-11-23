@@ -15,6 +15,7 @@ import { BranchesSection } from './settings/BranchesSection';
 import { StorekeepersSection } from './settings/StorekeepersSection';
 import { InvoiceDesignSection } from './settings/InvoiceDesignSection';
 import { LicenseSection } from './settings/LicenseSection';
+import { AutoBackupStatus } from './settings/AutoBackupStatus';
 
 interface SettingsViewProps {
   openTestRunner?: () => void;
@@ -381,6 +382,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ openTestRunner }) =>
                 <p className="text-xs text-slate-500">تصدير قاعدة بيانات النظام بالكامل كملف JSON واستعادتها في أي وقت</p>
               </div>
             </div>
+
+            <AutoBackupStatus />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
