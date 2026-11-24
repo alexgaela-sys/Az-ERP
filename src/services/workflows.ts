@@ -1827,6 +1827,15 @@ export class WorkflowService {
       if (Number(l.quantity) <= 0) return { success: false, error: 'كمية المرتجع يجب أن تكون أكبر من صفر' };
     }
 
+    // BUG FIX (reported by the owner): a bonus/free quantity on the original
+    // invoice line must be consumed AT MOST ONCE across all of that invoice's
+    // returns, not re-granted to every return. priorBonusReturnedByItem tracks
+    // how much of the original bonus has already been reversed as "free" by
+    // earlier posted returns, so the current return only gets what's left —
+    // see its use in lineEconomics below. Declared here (outer scope) so it
+    // survives past this invoiceId block for that later computation.
+    const priorBonusReturnedByItem = new Map<string, number>();
+
     // F22: a return must not exceed what was actually sold on the original
     // invoice line (paid quantity + bonus quantity). Returning more than was
     // sold creates inventory and COGS reversals that have no source sale to
@@ -1850,6 +1859,12 @@ export class WorkflowService {
         const prior = db.salesReturns.find(r => r.id === l.returnId);
         if (!prior || prior.invoiceId !== params.invoiceId || prior.status === 'cancelled') continue;
         priorReturnedByItem.set(l.itemId, (priorReturnedByItem.get(l.itemId) || 0) + (Number(l.quantity) || 0));
+        // Each earlier posted return line already recorded exactly how much of
+        // ITS quantity was bonus (its own freeQuantity, set at F17/F22 below
+        // when that return was posted) — summing it gives the bonus already
+        // "spent" on this invoice, regardless of how many separate returns it
+        // took.
+        priorBonusReturnedByItem.set(l.itemId, (priorBonusReturnedByItem.get(l.itemId) || 0) + (Number(l.freeQuantity) || 0));
       }
       const invLines = db.salesInvoiceLines.filter(sl => sl.invoiceId === params.invoiceId);
       for (const l of params.lines) {
@@ -1935,9 +1950,19 @@ export class WorkflowService {
         ? (origLine.vatRate || 0)
         : (params.exceptionTaxTreatment === 'exempt' ? 0 : (l.vatRate || 0));
       const effectiveUnitPrice = origLine ? (Number(origLine.unitPrice) || 0) : (Number(l.unitPrice) || 0);
-      const bonusQty = origLine
-        ? Math.min(l.quantity, Number(origLine.freeQuantity) || 0)
-        : Math.min(l.quantity, Number((l as { freeQuantity?: number }).freeQuantity) || 0);
+      // BUG FIX: the original line's bonus/free quantity is a FIXED pool for
+      // the whole invoice — once an earlier return has already reversed N
+      // bonus units as free, only the remainder is left to give away here.
+      // The previous logic re-read origLine.freeQuantity on every return with
+      // no memory of earlier returns, so a 2-unit bonus got "refunded as
+      // free" again on a second partial return of the same line, silently
+      // shorting the customer's cash-back by the bonus value every repeat.
+      const totalBonusQty = origLine
+        ? Number(origLine.freeQuantity) || 0
+        : Number((l as { freeQuantity?: number }).freeQuantity) || 0;
+      const bonusAlreadyConsumed = origLine ? (priorBonusReturnedByItem.get(l.itemId) || 0) : 0;
+      const bonusRemaining = Math.max(0, totalBonusQty - bonusAlreadyConsumed);
+      const bonusQty = Math.min(l.quantity, bonusRemaining);
       const paidQty = Math.max(0, l.quantity - bonusQty);
       const lineNet = paidQty * effectiveUnitPrice;
       revenueNet += lineNet;
