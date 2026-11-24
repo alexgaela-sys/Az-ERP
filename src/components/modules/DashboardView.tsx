@@ -243,129 +243,156 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
         </div>
       </div>
 
-      {/* KPI grid — all real data */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <KpiTile
-          label="مبيعات الشهر"
-          value={formatEGP(salesThisMonth)}
-          hint="الفواتير المرحلة خلال الشهر الحالي"
-          icon={TrendingUp}
-          tone="bg-emerald-50 text-emerald-600"
-          onClick={() => onNavigateTab('sales')}
-        />
-        <KpiTile
-          label="إجمالي المبيعات (الفترة)"
-          value={formatEGP(totalSalesAllTime)}
-          hint="كل الفواتير المرحلة"
-          icon={DollarSign}
-          tone="bg-brand-50 text-brand-600"
-          onClick={() => onNavigateTab('sales')}
-        />
-        <KpiTile
-          label="المبيعات آجلة (الفترة)"
-          value={formatEGP(creditSales)}
-          hint="مبيعات غير مسددة بالكامل"
-          icon={CreditCard}
-          tone="bg-indigo-50 text-indigo-600"
-          onClick={() => onNavigateTab('sales')}
-        />
-        <KpiTile
-          label="تحصيلات الشهر"
-          value={formatEGP(collectionsThisMonth)}
-          hint={`محلي ${formatEGP(collectionsLocalThisMonth)} + تصدير ${formatEGP(exportCollectionsEgp)}`}
-          icon={CheckCircle2}
-          tone="bg-teal-50 text-teal-600"
-          onClick={() => onNavigateTab('customers')}
-        />
-        <KpiTile
-          label="أرصدة العملاء"
-          value={formatEGP(customerReceivables)}
-          hint="مديونيات مستحقة للشركة"
-          icon={Users}
-          tone="bg-amber-50 text-amber-700"
-          onClick={() => onNavigateTab('customers')}
-        />
-        <KpiTile
-          label="مستحقات الموردين"
-          value={formatEGP(supplierPayables)}
-          hint="التزامات الخامات والتعبئة"
-          icon={Truck}
-          tone="bg-rose-50 text-rose-600"
-          onClick={() => onNavigateTab('suppliers')}
-        />
-        <KpiTile
-          label="قيمة المخزون"
-          value={formatEGP(inventoryValue)}
-          hint="تقييم التشغيلات بالمستودعات"
-          icon={Boxes}
-          tone="bg-violet-50 text-violet-600"
-          onClick={() => onNavigateTab('inventory')}
-        />
-        <KpiTile
-          label="العهد القائمة"
-          value={formatNum(openCustodies)}
-          hint="عهد مناديب لم تُسوَّ بعد"
-          icon={UserCheck}
-          tone="bg-sky-50 text-sky-600"
-          onClick={() => onNavigateTab('representatives')}
-        />
-        <KpiTile
-          label="الخزينة"
-          value={formatEGP(treasuryBalance)}
-          hint="الخزينة الرئيسية النقدية (1101)"
-          icon={Wallet}
-          tone="bg-amber-50 text-amber-600"
-          onClick={() => onNavigateTab('treasury')}
-        />
-        <KpiTile
-          label="البنوك"
-          value={formatEGP(bankBalancesTotal)}
-          hint={usdBankCard ? `بالجنيه (1102+1103) · حساب الدولار ${formatNum(usdBankBalanceUsd)} $` : 'حسابات البنوك بالجنيه (1102+1103)'}
-          icon={Landmark}
-          tone="bg-blue-50 text-blue-600"
-          onClick={() => onNavigateTab('banks')}
-        />
-        <KpiTile
-          label="إيرادات محلية"
-          value={formatEGP(revenueLocal)}
-          hint={`تكلفة ${formatEGP(cogsLocal)} · إجمالي الربح ${formatEGP(grossLocal)}`}
-          icon={ShoppingCart}
-          tone="bg-emerald-50 text-emerald-600"
-          onClick={() => onNavigateTab('reports')}
-        />
-        <KpiTile
-          label="إيرادات تصدير"
-          value={formatEGP(revenueExport)}
-          hint={`تكلفة ${formatEGP(cogsExport)} · إجمالي الربح ${formatEGP(grossExport)}`}
-          icon={Truck}
-          tone="bg-cyan-50 text-cyan-700"
-          onClick={() => onNavigateTab('reports')}
-        />
-        <KpiTile
-          label="صافي الربح (الفترة)"
-          value={formatEGP(netProfit)}
-          hint="الإيرادات − التكلفة المباشرة − المصروفات"
-          icon={DollarSign}
-          tone={netProfit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}
-          valueTone={netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}
-          onClick={() => onNavigateTab('accounting')}
-        />
-        <KpiTile
-          label="أصناف قاربت الانتهاء"
-          value={formatNum(expiringBatches.length)}
-          hint="تشغيلات تنتهي خلال 10 أيام"
-          icon={AlertTriangle}
-          tone={expiringBatches.length > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}
-          onClick={() => onNavigateTab('inventory')}
-        />
-        <KpiTile
-          label="أصناف وصلت لحد إعادة الطلب"
-          value={formatNum(lowStockItems.length)}
-          hint="الرصيد وصل للحد الأدنى المُعرّف أو أقل"
-          icon={PackageX}
-          tone={lowStockItems.length > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}
-          onClick={() => onNavigateTab('items')}
-        />
+      {/* KPI groups — all real data, organized by subject so the eye can
+          scan one concern at a time instead of 15 undifferentiated tiles. */}
+      <div className="space-y-5">
+        <KpiGroup label="المبيعات والتحصيل" dot="bg-emerald-500">
+          <KpiTile
+            label="مبيعات الشهر"
+            value={formatEGP(salesThisMonth)}
+            hint="الفواتير المرحلة خلال الشهر الحالي"
+            icon={TrendingUp}
+            tone="bg-emerald-50 text-emerald-600"
+            barTone="bg-emerald-500"
+            onClick={() => onNavigateTab('sales')}
+          />
+          <KpiTile
+            label="إجمالي المبيعات (الفترة)"
+            value={formatEGP(totalSalesAllTime)}
+            hint="كل الفواتير المرحلة"
+            icon={DollarSign}
+            tone="bg-brand-50 text-brand-600"
+            barTone="bg-brand-500"
+            onClick={() => onNavigateTab('sales')}
+          />
+          <KpiTile
+            label="المبيعات آجلة (الفترة)"
+            value={formatEGP(creditSales)}
+            hint="مبيعات غير مسددة بالكامل"
+            icon={CreditCard}
+            tone="bg-indigo-50 text-indigo-600"
+            barTone="bg-indigo-500"
+            onClick={() => onNavigateTab('sales')}
+          />
+          <KpiTile
+            label="تحصيلات الشهر"
+            value={formatEGP(collectionsThisMonth)}
+            hint={`محلي ${formatEGP(collectionsLocalThisMonth)} + تصدير ${formatEGP(exportCollectionsEgp)}`}
+            icon={CheckCircle2}
+            tone="bg-teal-50 text-teal-600"
+            barTone="bg-teal-500"
+            onClick={() => onNavigateTab('customers')}
+          />
+        </KpiGroup>
+
+        <KpiGroup label="الربحية حسب القناة" dot="bg-cyan-500">
+          <KpiTile
+            label="إيرادات محلية"
+            value={formatEGP(revenueLocal)}
+            hint={`تكلفة ${formatEGP(cogsLocal)} · إجمالي الربح ${formatEGP(grossLocal)}`}
+            icon={ShoppingCart}
+            tone="bg-emerald-50 text-emerald-600"
+            barTone="bg-emerald-500"
+            onClick={() => onNavigateTab('reports')}
+          />
+          <KpiTile
+            label="إيرادات تصدير"
+            value={formatEGP(revenueExport)}
+            hint={`تكلفة ${formatEGP(cogsExport)} · إجمالي الربح ${formatEGP(grossExport)}`}
+            icon={Truck}
+            tone="bg-cyan-50 text-cyan-700"
+            barTone="bg-cyan-500"
+            onClick={() => onNavigateTab('reports')}
+          />
+          <KpiTile
+            label="صافي الربح (الفترة)"
+            value={formatEGP(netProfit)}
+            hint="الإيرادات − التكلفة المباشرة − المصروفات"
+            icon={DollarSign}
+            tone={netProfit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}
+            barTone={netProfit >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}
+            valueTone={netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}
+            onClick={() => onNavigateTab('accounting')}
+          />
+        </KpiGroup>
+
+        <KpiGroup label="الأرصدة والسيولة" dot="bg-amber-500">
+          <KpiTile
+            label="الخزينة"
+            value={formatEGP(treasuryBalance)}
+            hint="الخزينة الرئيسية النقدية (1101)"
+            icon={Wallet}
+            tone="bg-amber-50 text-amber-600"
+            barTone="bg-amber-500"
+            onClick={() => onNavigateTab('treasury')}
+          />
+          <KpiTile
+            label="البنوك"
+            value={formatEGP(bankBalancesTotal)}
+            hint={usdBankCard ? `بالجنيه (1102+1103) · حساب الدولار ${formatNum(usdBankBalanceUsd)} $` : 'حسابات البنوك بالجنيه (1102+1103)'}
+            icon={Landmark}
+            tone="bg-blue-50 text-blue-600"
+            barTone="bg-blue-500"
+            onClick={() => onNavigateTab('banks')}
+          />
+          <KpiTile
+            label="أرصدة العملاء"
+            value={formatEGP(customerReceivables)}
+            hint="مديونيات مستحقة للشركة"
+            icon={Users}
+            tone="bg-amber-50 text-amber-700"
+            barTone="bg-amber-500"
+            onClick={() => onNavigateTab('customers')}
+          />
+          <KpiTile
+            label="مستحقات الموردين"
+            value={formatEGP(supplierPayables)}
+            hint="التزامات الخامات والتعبئة"
+            icon={Truck}
+            tone="bg-rose-50 text-rose-600"
+            barTone="bg-rose-500"
+            onClick={() => onNavigateTab('suppliers')}
+          />
+        </KpiGroup>
+
+        <KpiGroup label="المخزون والتنبيهات" dot="bg-violet-500">
+          <KpiTile
+            label="قيمة المخزون"
+            value={formatEGP(inventoryValue)}
+            hint="تقييم التشغيلات بالمستودعات"
+            icon={Boxes}
+            tone="bg-violet-50 text-violet-600"
+            barTone="bg-violet-500"
+            onClick={() => onNavigateTab('inventory')}
+          />
+          <KpiTile
+            label="العهد القائمة"
+            value={formatNum(openCustodies)}
+            hint="عهد مناديب لم تُسوَّ بعد"
+            icon={UserCheck}
+            tone="bg-sky-50 text-sky-600"
+            barTone="bg-sky-500"
+            onClick={() => onNavigateTab('representatives')}
+          />
+          <KpiTile
+            label="أصناف قاربت الانتهاء"
+            value={formatNum(expiringBatches.length)}
+            hint="تشغيلات تنتهي خلال 10 أيام"
+            icon={AlertTriangle}
+            tone={expiringBatches.length > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}
+            barTone={expiringBatches.length > 0 ? 'bg-rose-500' : 'bg-emerald-500'}
+            onClick={() => onNavigateTab('inventory')}
+          />
+          <KpiTile
+            label="أصناف وصلت لحد إعادة الطلب"
+            value={formatNum(lowStockItems.length)}
+            hint="الرصيد وصل للحد الأدنى المُعرّف أو أقل"
+            icon={PackageX}
+            tone={lowStockItems.length > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}
+            barTone={lowStockItems.length > 0 ? 'bg-rose-500' : 'bg-emerald-500'}
+            onClick={() => onNavigateTab('items')}
+          />
+        </KpiGroup>
       </div>
 
       {/* Production flow strip */}
@@ -454,8 +481,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
         {/* 10-day expiry alerts */}
         <div className="card p-5">
           <div className="flex items-center justify-between pb-3 border-b border-cream-200">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-brand-600" />
+            <div className="flex items-center gap-2.5">
+              <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${expiringBatches.length > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                <AlertTriangle className="w-4 h-4" />
+              </div>
               <h3 className="font-black text-ink-900 text-sm">أصناف قاربت الصلاحية (خلال {expiryThresholdDays} أيام)</h3>
             </div>
             <div className="flex items-center gap-3">
@@ -497,8 +526,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
         {/* Low-stock / reorder alerts */}
         <div className="card p-5">
           <div className="flex items-center justify-between pb-3 border-b border-cream-200">
-            <div className="flex items-center gap-2">
-              <PackageX className="w-5 h-5 text-brand-600" />
+            <div className="flex items-center gap-2.5">
+              <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${lowStockItems.length > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                <PackageX className="w-4 h-4" />
+              </div>
               <h3 className="font-black text-ink-900 text-sm">أصناف قرب النفاد (إعادة الطلب)</h3>
             </div>
             <div className="flex items-center gap-3">
@@ -540,8 +571,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
         {/* Best-selling products */}
         <div className="card p-5 lg:col-span-2" data-price>
           <div className="flex items-center justify-between pb-3 border-b border-cream-200">
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-brand-600" />
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 bg-brand-50 text-brand-600">
+                <ShoppingCart className="w-4 h-4" />
+              </div>
               <h3 className="font-black text-ink-900 text-sm">أعلى المنتجات مبيعاً (Top 5)</h3>
             </div>
             <button
@@ -604,6 +637,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab }) =
   );
 };
 
+/* ---------- KPI group: a small eyebrow label + colored dot above a
+   row of related tiles, so the dashboard reads as organized sections
+   rather than one undifferentiated wall of numbers. ---------- */
+const KpiGroup: React.FC<{ label: string; dot: string; children: React.ReactNode }> = ({ label, dot, children }) => (
+  <div className="space-y-2.5">
+    <div className="flex items-center gap-2 px-0.5">
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+      <h4 className="text-[11px] font-black text-cream-700 uppercase tracking-wider">{label}</h4>
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">{children}</div>
+  </div>
+);
+
 /* ---------- KPI tile ---------- */
 const KpiTile: React.FC<{
   label: string;
@@ -611,13 +657,20 @@ const KpiTile: React.FC<{
   hint: string;
   icon: React.ComponentType<{ className?: string }>;
   tone: string;
+  /** Thin top accent bar color (bg-*-500), echoing the tile's tone family. */
+  barTone: string;
   valueTone?: string;
   onClick?: () => void;
-}> = ({ label, value, hint, icon: Icon, tone, valueTone, onClick }) => (
-  <div className="kpi-card" onClick={onClick} {...(/ج\.م|\$/.test(value) || /ج\.م|\$/.test(hint) ? { 'data-price': true } : {})}>
+}> = ({ label, value, hint, icon: Icon, tone, barTone, valueTone, onClick }) => (
+  <div
+    className="kpi-card relative overflow-hidden"
+    onClick={onClick}
+    {...(/ج\.م|\$/.test(value) || /ج\.م|\$/.test(hint) ? { 'data-price': true } : {})}
+  >
+    <span className={`absolute inset-x-0 top-0 h-1 ${barTone}`} />
     <div className="flex items-center justify-between">
       <span className="kpi-label">{label}</span>
-      <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${tone}`}>
+      <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${tone}`}>
         <Icon className="w-4 h-4" />
       </div>
     </div>
