@@ -1697,6 +1697,7 @@ export class WorkflowService {
     destination: 'saleable' | 'raw_materials' | 'damaged' | 'scrap' | 'recycling';
     reason?: string;
     notes?: string;
+    isTest?: boolean;
   }): { success: boolean; inspection?: QualityInspection; error?: string } {
     const db = erpDb.getSnapshot();
     const item = db.items.find(i => i.id === params.itemId);
@@ -1724,6 +1725,7 @@ export class WorkflowService {
       destination: params.destination,
       destinationWarehouseId: targetWh,
       notes: params.notes,
+      isTest: params.isTest,
     };
 
     erpDb.mutate(draft => {
@@ -4549,6 +4551,7 @@ export class WorkflowService {
       destination: params.destination,
       destinationWarehouseId: routing.warehouseId,
       notes: params.notes,
+      isTest: params.isTest,
     };
 
     erpDb.mutate(draft => {

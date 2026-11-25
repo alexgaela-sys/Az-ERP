@@ -1201,6 +1201,7 @@ export class TestDataService {
         exchangeRate: 1,
         reference: 'TEST-PO-5K',
         date: todayStr,
+        isTest: true,
         lines: [
           {
             itemId: testRawMatId,
@@ -1226,6 +1227,7 @@ export class TestDataService {
         unitCost: 50,
         documentType: 'مرتجع مشتريات',
         documentNumber: 'TEST-PRET-01',
+        isTest: true,
       });
       AccountingEngine.postJournal({
         date: todayStr,
@@ -1236,7 +1238,7 @@ export class TestDataService {
           { id: '', journalEntryId: '', accountId: 'acc-2101', accountCode: '2101', accountNameAr: 'المورد', debit: 1000, credit: 0, currency: 'EGP', originalAmount: 1000, exchangeRate: 1 },
           { id: '', journalEntryId: '', accountId: 'acc-1108', accountCode: '1108', accountNameAr: 'المخزون', debit: 0, credit: 1000, currency: 'EGP', originalAmount: 1000, exchangeRate: 1 }
         ]
-      });
+      }, undefined, undefined, true);
       erpDb.mutate(draft => {
         const s = draft.suppliers.find(x => x.id === testSupplierId);
         if (s) s.currentBalance = (s.currentBalance || 5000) - 1000;
@@ -1244,7 +1246,7 @@ export class TestDataService {
       record(6, 'مرتجع المشتريات (إرجاع 20 كجم وتخفيض مديونية المورد 1,000 ج.م)', 'passed', 'انخفض المخزون بمقدار 20 كجم ومديونية المورد بمقدار 1,000 ج.م مع قيد عكسي متزن.');
 
       // 7. Inventory Transfers
-      const trRes = InventoryEngine.transferWarehouse(testRawMatId, 'wh-raw', 'wh-damaged', 10, 50, 'TEST-BAT-PUR-01');
+      const trRes = InventoryEngine.transferWarehouse(testRawMatId, 'wh-raw', 'wh-damaged', 10, 50, 'TEST-BAT-PUR-01', undefined, undefined, true);
       record(7, 'حركات المخزون والتحويل بين المستودعات وتتبع التشغيلات', trRes.success ? 'passed' : 'failed', 'تم تحويل 10 كجم بنجاح بين المستودعات وتوثيق الحركة المخزنية برقم تشغيلة.');
 
       // 8. Manufacturing BOM & Order
@@ -1305,6 +1307,7 @@ export class TestDataService {
         date: todayStr,
         userId: 'usr-admin',
         userName: 'مدير الإنتاج',
+        isTest: true,
       });
       ManufacturingEngine.closeProductionOrder(prodOrderId);
       record(9, 'إثبات التوالف والهالك (950 تام + 30 معيب + 20 سكراب = 1000)', 'passed', 'تم ضبط الكميات بالكامل: 950 تام + 30 معيب تدوير + 20 هالك سكراب = 1000 كرتونة دون ضياع أي كمية.');
@@ -1320,6 +1323,7 @@ export class TestDataService {
         inspectorName: 'مراقب الجودة التجريبي',
         result: 'conditional',
         destination: 'recycling',
+        isTest: true,
       });
       record(10, 'فحص الجودة وتوجيه المعيب للتدوير والهالك للسكراب', qiRes.success ? 'passed' : 'failed', 'تم توجيه المعيب للتدوير بمستودع الخامات والهالك لمستودع السكراب بموجب قرارات الجودة.');
 
@@ -1332,6 +1336,7 @@ export class TestDataService {
         currency: 'EGP',
         exchangeRate: 1,
         date: todayStr,
+        isTest: true,
         lines: [{ itemId: targetFpId, quantity: 100, unitPrice: 100, vatRate: 0.14 }]
       });
       record(11, 'المبيعات المحلية (100 كرتونة × 100 ج.م = 10,000 ج.م + ضريبة)', sRes.success ? 'passed' : 'failed', 'فاتورة مبيعات محلية بقيمة 10,000 ج.م + 1,400 ضريبة، وتخفيض المخزون وإثبات COGS.');
@@ -1345,6 +1350,7 @@ export class TestDataService {
         currency: 'EGP',
         exchangeRate: 1,
         date: todayStr,
+        isTest: true,
         lines: [{ itemId: targetFpId, quantity: 10, freeQuantity: 1, unitPrice: 100, vatRate: 0.14 }]
       });
       record(12, 'العروض الترويجية والبونص (شراء 10 كراتين + 1 كرتونة بونص مجاني)', promoRes.success ? 'passed' : 'failed', 'تم صرف 11 كرتونة من المخزون، وتحميل تكلفة الـ 11 على COGS، واحتساب الإيراد لـ 10 فقط.');
@@ -1359,6 +1365,7 @@ export class TestDataService {
         unitCost: 95,
         documentType: 'مرتجع مبيعات',
         documentNumber: 'TEST-SRET-01',
+        isTest: true,
       });
       erpDb.mutate(draft => {
         const c = draft.customers.find(x => x.id === testLocalCustId);
@@ -1375,6 +1382,7 @@ export class TestDataService {
         paymentMethod: 'cash',
         date: todayStr,
         reference: 'TEST-PMT-4K',
+        isTest: true,
       });
       record(14, 'تحصيل دفعة نقدية من العميل وتخصيصها وتحديث المديونية', pmtRes.success ? 'passed' : 'failed', 'تم تحصيل 4,000 ج.م نقدًا وتخفيض مديونية العميل وإثبات سند التحصيل.');
 

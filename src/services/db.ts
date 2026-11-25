@@ -1983,8 +1983,14 @@ class ERPDatabaseService {
       });
       draft.purchaseReturns = draft.purchaseReturns.filter(r => !r.isTest);
       draft.productionOrders = draft.productionOrders.filter(p => !p.isTest);
-      draft.productionConsumptions = draft.productionConsumptions.filter(c => !(c as any).isTest);
-      draft.productionWastes = draft.productionWastes.filter(w => !(w as any).isTest);
+      // These two carry no isTest flag of their own — they are always 1:1
+      // children of a production order, so once the test order above is
+      // removed, any of its leftover consumption/waste rows are orphaned
+      // test rows too. Cascading on the parent's survival (same pattern as
+      // salesInvoiceLines/bomLines below) actually removes them, instead of
+      // checking a flag that was never set on these rows in the first place.
+      draft.productionConsumptions = draft.productionConsumptions.filter(c => draft.productionOrders.some(o => o.id === c.productionOrderId));
+      draft.productionWastes = draft.productionWastes.filter(w => draft.productionOrders.some(o => o.id === w.productionOrderId));
       draft.inventoryTransactions = draft.inventoryTransactions.filter(t => !t.isTest);
       draft.payments = draft.payments.filter(p => !p.isTest);
       draft.cheques = draft.cheques.filter(c => !c.isTest);
@@ -2004,6 +2010,17 @@ class ERPDatabaseService {
       draft.auditLogs = draft.auditLogs.filter(a => !(a as any).isTest);
       draft.payrollDistributions = draft.payrollDistributions.filter(d => !(d as any).isTest);
       draft.scrapSales = draft.scrapSales.filter(s => !(s as any).isTest);
+      // Previously missing entirely: a test inventory count or a test
+      // withholding-tax adjustment carries isTest, but nothing here ever
+      // checked it, so it survived "clear test data" forever.
+      draft.inventoryCounts = draft.inventoryCounts.filter(c => !c.isTest);
+      draft.inventoryCountLines = draft.inventoryCountLines.filter(l => draft.inventoryCounts.some(c => c.id === l.countId));
+      draft.withholdingAdjustments = draft.withholdingAdjustments.filter(w => !w.isTest);
+      // PaymentAllocation carries no isTest of its own — it's always a child
+      // of a payment, so once a test payment above is removed, cascade its
+      // allocations away too (same reasoning as productionConsumptions).
+      draft.paymentAllocations = draft.paymentAllocations.filter(a => draft.payments.some(p => p.id === a.paymentId));
+      draft.qualityInspections = draft.qualityInspections.filter(q => !q.isTest);
 
       // Recalculate account balances based on remaining posted journal entries
       draft.accounts.forEach(acc => {

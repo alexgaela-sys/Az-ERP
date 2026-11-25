@@ -370,6 +370,7 @@ export interface QualityInspection {
   destination: QualityDestination;
   destinationWarehouseId: string;
   notes?: string;
+  isTest?: boolean;
 }
 
 export interface Customer {

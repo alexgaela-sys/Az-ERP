@@ -484,7 +484,11 @@ export class InventoryEngine {
     batchNumber?: string,
     notes?: string,
     /** F18: business date of the transfer (defaults to today). */
-    date?: string
+    date?: string,
+    /** Marks the resulting batch/transaction rows as test data, so
+     *  "clear test data" can actually remove a test transfer instead of
+     *  leaving it mixed into real stock forever. */
+    isTest?: boolean
   ): { success: boolean; error?: string; outTransaction?: InventoryTransaction; inTransaction?: InventoryTransaction; actualCost?: number } {
     if (sourceWarehouseId === targetWarehouseId) {
       return { success: false, error: 'لا يمكن التحويل لنفس المستودع' };
@@ -588,6 +592,7 @@ export class InventoryEngine {
             expiryDate: srcBatch?.expiryDate || '',
             quantity: layerQty,
             unitCost: layerCost,
+            isTest,
           });
         }
       }
@@ -614,6 +619,7 @@ export class InventoryEngine {
         unitCost: actualUnitCost,
         totalCost: actualCost,
         notes: `تحويل إلى مستودع (${target.code} - ${target.nameAr}): ${notes || ''}`,
+        isTest,
       };
       inTx = {
         id: generateErpId('itx'),
@@ -630,6 +636,7 @@ export class InventoryEngine {
         unitCost: actualUnitCost,
         totalCost: actualCost,
         notes: `وارد من مستودع (${source.code} - ${source.nameAr}): ${notes || ''}`,
+        isTest,
       };
 
       draft.inventoryTransactions.push(outTx!, inTx!);

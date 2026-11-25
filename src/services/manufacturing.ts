@@ -1176,6 +1176,7 @@ export class ManufacturingEngine {
           productionDate: dateStr,
           expiryDate: expiryDate || undefined,
           notes: `إنتاج تام تشغيلة ${batchNumber}`,
+          isTest: params.isTest,
         });
       }
 
@@ -1209,6 +1210,7 @@ export class ManufacturingEngine {
           documentNumber: ord.orderNumber,
           batchNumber,
           notes: params.wasteReason || 'هالك خط تعبئة وتغليف',
+          isTest: params.isTest,
         });
         scrapMoved = scrapQty;
       }
@@ -1255,6 +1257,7 @@ export class ManufacturingEngine {
           notes: isRecycle
             ? 'معيب قابل لإعادة التدوير — بانتظار استرداد الخامات الفعلية بمستند منفصل'
             : 'محول لمستودع التوالف',
+          isTest: params.isTest,
         });
         defectiveMoved = defectiveQty;
       }
