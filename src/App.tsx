@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { erpDb, CLOUD_STORAGE_MODE } from './services/db';
 import { getCloudRuntime } from './components/cloud/cloudRuntime';
 import { AuthService, AuthSession } from './services/auth';
@@ -8,32 +8,39 @@ import { MasterDataService } from './services/masterData';
 import { Sidebar, NavTab } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { LoginView } from './components/auth/LoginView';
+import { Skeleton } from './components/ui';
 
 // Module Views
+// Fix 4 (speed-fix list): Dashboard and the login path stay eager (shown
+// immediately after sign-in / on every visit); every other module screen is
+// code-split with React.lazy so only the screen the user actually opens is
+// downloaded. Each is a named export, so lazy's dynamic import is mapped to
+// the default-export shape it expects.
 import { DashboardView } from './components/modules/DashboardView';
-import { ProductsMasterView } from './components/modules/ProductsMasterView';
-import { SalesView } from './components/modules/SalesView';
-import { CashierView } from './components/modules/CashierView';
-import { PurchasingView } from './components/modules/PurchasingView';
-import { InventoryView } from './components/modules/InventoryView';
-import { ManufacturingView } from './components/modules/ManufacturingView';
-import { QualityView } from './components/modules/QualityView';
-import { CostingView } from './components/modules/CostingView';
-import { CustomersView } from './components/modules/CustomersView';
-import { SuppliersView } from './components/modules/SuppliersView';
-import { RepresentativesView } from './components/modules/RepresentativesView';
-import { ExportView } from './components/modules/ExportView';
-import { TreasuryView } from './components/modules/TreasuryView';
-import { BanksView } from './components/modules/BanksView';
-import { ChequesView } from './components/modules/ChequesView';
-import { PayrollView } from './components/modules/PayrollView';
-import { ExpensesView } from './components/modules/ExpensesView';
-import { AccountingView } from './components/modules/AccountingView';
-import { OpeningBalancesView } from './components/modules/OpeningBalancesView';
-import { ReportsView, ReportType } from './components/modules/ReportsView';
-import { UsersView } from './components/modules/UsersView';
-import { SettingsView } from './components/modules/SettingsView';
-import { AuditLogView } from './components/modules/AuditLogView';
+import type { ReportType } from './components/modules/ReportsView';
+const ProductsMasterView = lazy(() => import('./components/modules/ProductsMasterView').then(m => ({ default: m.ProductsMasterView })));
+const SalesView = lazy(() => import('./components/modules/SalesView').then(m => ({ default: m.SalesView })));
+const CashierView = lazy(() => import('./components/modules/CashierView').then(m => ({ default: m.CashierView })));
+const PurchasingView = lazy(() => import('./components/modules/PurchasingView').then(m => ({ default: m.PurchasingView })));
+const InventoryView = lazy(() => import('./components/modules/InventoryView').then(m => ({ default: m.InventoryView })));
+const ManufacturingView = lazy(() => import('./components/modules/ManufacturingView').then(m => ({ default: m.ManufacturingView })));
+const QualityView = lazy(() => import('./components/modules/QualityView').then(m => ({ default: m.QualityView })));
+const CostingView = lazy(() => import('./components/modules/CostingView').then(m => ({ default: m.CostingView })));
+const CustomersView = lazy(() => import('./components/modules/CustomersView').then(m => ({ default: m.CustomersView })));
+const SuppliersView = lazy(() => import('./components/modules/SuppliersView').then(m => ({ default: m.SuppliersView })));
+const RepresentativesView = lazy(() => import('./components/modules/RepresentativesView').then(m => ({ default: m.RepresentativesView })));
+const ExportView = lazy(() => import('./components/modules/ExportView').then(m => ({ default: m.ExportView })));
+const TreasuryView = lazy(() => import('./components/modules/TreasuryView').then(m => ({ default: m.TreasuryView })));
+const BanksView = lazy(() => import('./components/modules/BanksView').then(m => ({ default: m.BanksView })));
+const ChequesView = lazy(() => import('./components/modules/ChequesView').then(m => ({ default: m.ChequesView })));
+const PayrollView = lazy(() => import('./components/modules/PayrollView').then(m => ({ default: m.PayrollView })));
+const ExpensesView = lazy(() => import('./components/modules/ExpensesView').then(m => ({ default: m.ExpensesView })));
+const AccountingView = lazy(() => import('./components/modules/AccountingView').then(m => ({ default: m.AccountingView })));
+const OpeningBalancesView = lazy(() => import('./components/modules/OpeningBalancesView').then(m => ({ default: m.OpeningBalancesView })));
+const ReportsView = lazy(() => import('./components/modules/ReportsView').then(m => ({ default: m.ReportsView })));
+const UsersView = lazy(() => import('./components/modules/UsersView').then(m => ({ default: m.UsersView })));
+const SettingsView = lazy(() => import('./components/modules/SettingsView').then(m => ({ default: m.SettingsView })));
+const AuditLogView = lazy(() => import('./components/modules/AuditLogView').then(m => ({ default: m.AuditLogView })));
 import { TestRunnerModal } from './components/modules/TestRunnerModal';
 
 export function App() {
@@ -204,36 +211,42 @@ export function App() {
               openTestRunner={() => setIsTestRunnerOpen(true)}
             />
           )}
-          {activeTab === 'items' && <ProductsMasterView />}
-          {activeTab === 'sales' && <SalesView />}
-          {activeTab === 'cashier' && <CashierView />}
-          {activeTab === 'purchasing' && <PurchasingView />}
-          {activeTab === 'inventory' && <InventoryView />}
-          {activeTab === 'manufacturing' && <ManufacturingView />}
-          {activeTab === 'quality' && <QualityView />}
-          {activeTab === 'costing' && <CostingView />}
-          {activeTab === 'customers' && <CustomersView />}
-          {activeTab === 'suppliers' && <SuppliersView />}
-          {activeTab === 'representatives' && <RepresentativesView />}
-          {activeTab === 'export' && <ExportView />}
-          {activeTab === 'treasury' && <TreasuryView />}
-          {activeTab === 'banks' && <BanksView />}
-          {activeTab === 'cheques' && <ChequesView />}
-          {activeTab === 'expenses' && <ExpensesView />}
-          {activeTab === 'payroll' && <PayrollView />}
-          {activeTab === 'accounting' && <AccountingView />}
-          {activeTab === 'opening' && <OpeningBalancesView />}
-          {activeTab === 'reports' && (
-            <ReportsView
-              initialReport={reportsSub}
-              onNavigateTab={(tab) => setActiveTab(tab as NavTab)}
-            />
-          )}
-          {activeTab === 'users' && <UsersView />}
-          {activeTab === 'settings' && (
-            <SettingsView openTestRunner={() => setIsTestRunnerOpen(true)} />
-          )}
-          {activeTab === 'audit' && <AuditLogView />}
+          {/* Fix 4 (speed-fix list): every screen below is lazy-loaded, so
+              this Suspense boundary covers the brief moment its chunk is
+              downloaded the first time a user opens it this session
+              (instant on every later visit — the browser caches the chunk). */}
+          <Suspense fallback={<Skeleton />}>
+            {activeTab === 'items' && <ProductsMasterView />}
+            {activeTab === 'sales' && <SalesView />}
+            {activeTab === 'cashier' && <CashierView />}
+            {activeTab === 'purchasing' && <PurchasingView />}
+            {activeTab === 'inventory' && <InventoryView />}
+            {activeTab === 'manufacturing' && <ManufacturingView />}
+            {activeTab === 'quality' && <QualityView />}
+            {activeTab === 'costing' && <CostingView />}
+            {activeTab === 'customers' && <CustomersView />}
+            {activeTab === 'suppliers' && <SuppliersView />}
+            {activeTab === 'representatives' && <RepresentativesView />}
+            {activeTab === 'export' && <ExportView />}
+            {activeTab === 'treasury' && <TreasuryView />}
+            {activeTab === 'banks' && <BanksView />}
+            {activeTab === 'cheques' && <ChequesView />}
+            {activeTab === 'expenses' && <ExpensesView />}
+            {activeTab === 'payroll' && <PayrollView />}
+            {activeTab === 'accounting' && <AccountingView />}
+            {activeTab === 'opening' && <OpeningBalancesView />}
+            {activeTab === 'reports' && (
+              <ReportsView
+                initialReport={reportsSub}
+                onNavigateTab={(tab) => setActiveTab(tab as NavTab)}
+              />
+            )}
+            {activeTab === 'users' && <UsersView />}
+            {activeTab === 'settings' && (
+              <SettingsView openTestRunner={() => setIsTestRunnerOpen(true)} />
+            )}
+            {activeTab === 'audit' && <AuditLogView />}
+          </Suspense>
         </main>
       </div>
 
