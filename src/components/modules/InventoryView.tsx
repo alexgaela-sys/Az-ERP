@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useModuleWriteAccess } from '../../hooks/usePermissions';
-import { 
-  Boxes, ArrowLeftRight, CheckSquare, Search, 
+import {
+  Boxes, ArrowLeftRight, CheckSquare, Search,
   AlertTriangle, Filter, Plus, Calendar, Check
 } from 'lucide-react';
 import { erpDb } from '../../services/db';
@@ -10,6 +10,8 @@ import { WorkflowService } from '../../services/workflows';
 import { AuthService } from '../../services/auth';
 import ItemCardReport from './ItemCardReport';
 import { printDocument } from '../printUtils';
+import { usePagination } from '../usePagination';
+import { Pager } from '../ui';
 
 type InventoryTab = 'balances' | 'ledger' | 'item_card' | 'transfers' | 'physical_count' | 'scrap_sales';
 
@@ -74,47 +76,57 @@ export const InventoryView: React.FC<{
   const whMap = new Map(db.warehouses.map(w => [w.id, w.nameAr]));
 
   // Calculate stock balance list
-  const stockBalances: Array<{
-    item: any;
-    warehouse: any;
-    quantity: number;
-    unitCost: number;
-    totalValue: number;
-    batchesCount: number;
-  }> = [];
+  // Fix 1 + Fix 2 (speed-fix list): one pass over db.batches to group by
+  // itemId+warehouseId (Fix 2, unchanged from before), now also memoized
+  // (Fix 1) so this whole O(items × warehouses) build only re-runs when one
+  // of its real inputs changes, not on every render. Same filter
+  // (quantity > 0), same iteration order (item-major, warehouse-minor) and
+  // same math as before.
+  const stockBalances = useMemo(() => {
+    const result: Array<{
+      item: any;
+      warehouse: any;
+      quantity: number;
+      unitCost: number;
+      totalValue: number;
+      batchesCount: number;
+    }> = [];
 
-  // Fix 2 (speed-fix list): one pass over db.batches to group by
-  // itemId+warehouseId, instead of re-scanning the whole batches array for
-  // every (item, warehouse) combination below. Same filter (quantity > 0),
-  // same iteration order (item-major, warehouse-minor) and same math as
-  // before — only how the batches for each combo are found has changed.
-  const positiveBatchesByItemWh = new Map<string, typeof db.batches>();
-  db.batches.forEach(b => {
-    if (b.quantity <= 0) return;
-    const key = `${b.itemId}|${b.warehouseId}`;
-    const arr = positiveBatchesByItemWh.get(key);
-    if (arr) arr.push(b);
-    else positiveBatchesByItemWh.set(key, [b]);
-  });
-
-  items.forEach(item => {
-    allowedWarehouses.forEach(wh => {
-      if (selectedWarehouseId !== 'all' && wh.id !== selectedWarehouseId) return;
-      const batches = positiveBatchesByItemWh.get(`${item.id}|${wh.id}`) || [];
-      const qty = batches.reduce((sum, b) => sum + b.quantity, 0);
-      if (qty > 0) {
-        const avgCost = batches.length > 0 ? batches.reduce((s, b) => s + (b.quantity * b.unitCost), 0) / qty : (item.standardCost || 0);
-        stockBalances.push({
-          item,
-          warehouse: wh,
-          quantity: qty,
-          unitCost: avgCost,
-          totalValue: qty * avgCost,
-          batchesCount: batches.length,
-        });
-      }
+    const positiveBatchesByItemWh = new Map<string, typeof db.batches>();
+    db.batches.forEach(b => {
+      if (b.quantity <= 0) return;
+      const key = `${b.itemId}|${b.warehouseId}`;
+      const arr = positiveBatchesByItemWh.get(key);
+      if (arr) arr.push(b);
+      else positiveBatchesByItemWh.set(key, [b]);
     });
-  });
+
+    items.forEach(item => {
+      allowedWarehouses.forEach(wh => {
+        if (selectedWarehouseId !== 'all' && wh.id !== selectedWarehouseId) return;
+        const batches = positiveBatchesByItemWh.get(`${item.id}|${wh.id}`) || [];
+        const qty = batches.reduce((sum, b) => sum + b.quantity, 0);
+        if (qty > 0) {
+          const avgCost = batches.length > 0 ? batches.reduce((s, b) => s + (b.quantity * b.unitCost), 0) / qty : (item.standardCost || 0);
+          result.push({
+            item,
+            warehouse: wh,
+            quantity: qty,
+            unitCost: avgCost,
+            totalValue: qty * avgCost,
+            batchesCount: batches.length,
+          });
+        }
+      });
+    });
+    return result;
+  }, [db.batches, items, allowedWarehouses, selectedWarehouseId]);
+
+  const { pageItems: pagedStockBalances, page: balancesPage, setPage: setBalancesPage, pageCount: balancesPageCount } = usePagination(stockBalances, 50);
+
+  // Fix 1 (speed-fix list): ledger tab, newest-first, memoized + paged.
+  const reversedInventoryTransactions = useMemo(() => db.inventoryTransactions.slice().reverse(), [db.inventoryTransactions]);
+  const { pageItems: pagedInventoryTransactions, page: txPage, setPage: setTxPage, pageCount: txPageCount } = usePagination(reversedInventoryTransactions, 50);
 
   const handleOpenTransfer = () => {
     if (!writeAccess.canCreate) { alert(writeAccess.createDeniedTitle); return; }
@@ -381,7 +393,7 @@ export const InventoryView: React.FC<{
                     </td>
                   </tr>
                 ) : (
-                  stockBalances.map((sb, idx) => (
+                  pagedStockBalances.map((sb, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/80 transition">
                       <td className="p-3.5 font-mono font-bold text-slate-900">{sb.item.code}</td>
                       <td className="p-3.5 font-bold text-slate-800">{sb.item.nameAr}</td>
@@ -405,6 +417,7 @@ export const InventoryView: React.FC<{
                 )}
               </tbody>
             </table>
+            <Pager page={balancesPage} pageCount={balancesPageCount} totalCount={stockBalances.length} onPageChange={setBalancesPage} itemLabel="صنف بمستودع" />
           </div>
         </div>
       )}
@@ -443,7 +456,7 @@ export const InventoryView: React.FC<{
                     </td>
                   </tr>
                 ) : (
-                  db.inventoryTransactions.slice().reverse().map(tx => {
+                  pagedInventoryTransactions.map(tx => {
                     const itm = items.find(i => i.id === tx.itemId);
                     return (
                       <tr key={tx.id} className="hover:bg-slate-50">
@@ -468,6 +481,7 @@ export const InventoryView: React.FC<{
                 )}
               </tbody>
             </table>
+            <Pager page={txPage} pageCount={txPageCount} totalCount={reversedInventoryTransactions.length} onPageChange={setTxPage} itemLabel="حركة" />
           </div>
         </div>
       )}

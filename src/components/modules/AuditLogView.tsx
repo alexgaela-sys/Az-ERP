@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
-import { 
-  History, Search, Shield, Filter, 
+import React, { useMemo, useState } from 'react';
+import {
+  History, Search, Shield, Filter,
   Clock, ArrowDownRight, User
 } from 'lucide-react';
 import { erpDb } from '../../services/db';
+import { usePagination } from '../usePagination';
+import { Pager } from '../ui';
 
 /** Render an audit snapshot (JSON) readably; falls back to the raw string. */
 function prettyValue(value?: string): string {
@@ -20,12 +22,15 @@ export const AuditLogView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [actionFilter, setActionFilter] = useState('all');
 
-  const filteredLogs = db.auditLogs.filter(log => {
+  // Fix 1 (speed-fix list): filter + newest-first memoized together, then paged.
+  const filteredLogs = useMemo(() => db.auditLogs.filter(log => {
     const text = `${log.description} ${log.userName} ${log.module} ${log.recordId}`.toLowerCase();
     const matchesSearch = text.includes(searchQuery.toLowerCase());
     const matchesAction = actionFilter === 'all' || log.action === actionFilter;
     return matchesSearch && matchesAction;
-  });
+  }), [db.auditLogs, searchQuery, actionFilter]);
+  const reversedLogs = useMemo(() => filteredLogs.slice().reverse(), [filteredLogs]);
+  const { pageItems: pagedLogs, page: logsPage, setPage: setLogsPage, pageCount: logsPageCount } = usePagination(reversedLogs, 50);
 
   return (
     <div className="space-y-6">

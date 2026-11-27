@@ -120,3 +120,44 @@ export const EmptyState: React.FC<{
     {hint && <p className="text-xs text-cream-500 mt-1">{hint}</p>}
   </div>
 );
+
+/* ============================================================
+   Pager — pairs with src/components/usePagination.ts (speed-fix list,
+   Fix 1). Presentation only: shows "صفحة X من Y (إجمالي Z)" plus
+   prev/next buttons. Hidden entirely when there is only one page.
+   ============================================================ */
+
+export const Pager: React.FC<{
+  page: number;
+  pageCount: number;
+  totalCount: number;
+  onPageChange: (page: number) => void;
+  itemLabel?: string; // e.g. 'فاتورة' — shown as "(إجمالي N فاتورة)"
+}> = ({ page, pageCount, totalCount, onPageChange, itemLabel }) => {
+  if (pageCount <= 1) return null;
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-cream-200 flex-wrap">
+      <p className="text-xs font-bold text-cream-600">
+        صفحة {page} من {pageCount} (إجمالي {totalCount.toLocaleString('en-US')}{itemLabel ? ` ${itemLabel}` : ''})
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-cream-100 text-cream-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-cream-200 transition-colors"
+        >
+          السابق
+        </button>
+        <button
+          type="button"
+          disabled={page >= pageCount}
+          onClick={() => onPageChange(page + 1)}
+          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-cream-100 text-cream-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-cream-200 transition-colors"
+        >
+          التالي
+        </button>
+      </div>
+    </div>
+  );
+};

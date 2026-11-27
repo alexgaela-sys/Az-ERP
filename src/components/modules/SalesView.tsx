@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CancelDocButton } from '../CancelDocButton';
 import { 
   Plus, Search, ShoppingCart, AlertTriangle, 
@@ -13,6 +13,8 @@ import { AuthService } from '../../services/auth';
 import InvoicePrint from './InvoicePrint';
 import { SalesInvoiceDetails } from '../salesInvoiceDetails';
 import { WithholdingSummary } from '../withholdingSummary';
+import { usePagination } from '../usePagination';
+import { Pager } from '../ui';
 
 export const SalesView: React.FC = () => {
   const db = erpDb.getSnapshot();
@@ -320,27 +322,42 @@ export const SalesView: React.FC = () => {
     : 0;
   const formNetDue = formTotalBeforeDeduction - formWithholding;
 
-  const filteredInvoices = db.salesInvoices.filter(inv => {
-    const cust = db.customers.find(c => c.id === inv.customerId);
-    const text = `${inv.invoiceNumber} ${cust?.name || ''}`.toLowerCase();
-    if (!text.includes(searchQuery.toLowerCase())) return false;
-    if (filterChannel !== 'all' && inv.channel !== filterChannel) return false;
-    if (filterCurrency !== 'all' && inv.currency !== filterCurrency) return false;
-    return true;
-  });
+  // Fix 1 (speed-fix list): filtering + all derived totals memoized together,
+  // keyed on exactly the inputs that can change their result. Previously
+  // this filtered db.salesInvoices and then re-filtered the result 5 more
+  // times on every single render, even when nothing relevant changed.
+  const { filteredInvoices, invoiceTotalsByCurrency, localFiltered, exportFiltered } = useMemo(() => {
+    const filtered = db.salesInvoices.filter(inv => {
+      const cust = db.customers.find(c => c.id === inv.customerId);
+      const text = `${inv.invoiceNumber} ${cust?.name || ''}`.toLowerCase();
+      if (!text.includes(searchQuery.toLowerCase())) return false;
+      if (filterChannel !== 'all' && inv.channel !== filterChannel) return false;
+      if (filterCurrency !== 'all' && inv.currency !== filterCurrency) return false;
+      return true;
+    });
 
-  // R-21 — per-currency totals of the current filter (local EGP sales vs export
-  // USD sales stay apart; each is labelled with its own currency).
-  const invoiceTotalsByCurrency = (['EGP', 'USD'] as const)
-    .map(cur => ({
-      currency: cur,
-      count: filteredInvoices.filter(i => i.currency === cur).length,
-      total: filteredInvoices.filter(i => i.currency === cur).reduce((s, i) => s + (i.totalAmountEGP || 0), 0),
-      original: filteredInvoices.filter(i => i.currency === cur).reduce((s, i) => s + (i.totalAmount || 0), 0),
-    }))
-    .filter(g => g.count > 0);
-  const localFiltered = filteredInvoices.filter(i => i.channel !== 'export');
-  const exportFiltered = filteredInvoices.filter(i => i.channel === 'export');
+    // R-21 — per-currency totals of the current filter (local EGP sales vs export
+    // USD sales stay apart; each is labelled with its own currency).
+    const totalsByCurrency = (['EGP', 'USD'] as const)
+      .map(cur => ({
+        currency: cur,
+        count: filtered.filter(i => i.currency === cur).length,
+        total: filtered.filter(i => i.currency === cur).reduce((s, i) => s + (i.totalAmountEGP || 0), 0),
+        original: filtered.filter(i => i.currency === cur).reduce((s, i) => s + (i.totalAmount || 0), 0),
+      }))
+      .filter(g => g.count > 0);
+
+    return {
+      filteredInvoices: filtered,
+      invoiceTotalsByCurrency: totalsByCurrency,
+      localFiltered: filtered.filter(i => i.channel !== 'export'),
+      exportFiltered: filtered.filter(i => i.channel === 'export'),
+    };
+  }, [db.salesInvoices, db.customers, searchQuery, filterChannel, filterCurrency]);
+
+  // Totals above (invoiceTotalsByCurrency, localFiltered, exportFiltered) are
+  // computed from the FULL filtered set — only the table below is paged.
+  const { pageItems: pagedInvoices, page: invoicesPage, setPage: setInvoicesPage, pageCount: invoicesPageCount } = usePagination(filteredInvoices, 50);
 
   return (
     <div className="space-y-6">
@@ -442,7 +459,7 @@ export const SalesView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredInvoices.map((inv) => {
+                pagedInvoices.map((inv) => {
                   const cust = db.customers.find(c => c.id === inv.customerId);
                   const jv = db.journalEntries.find(j => j.id === inv.journalEntryId);
                   return (
@@ -488,6 +505,7 @@ export const SalesView: React.FC = () => {
             </tbody>
           </table>
         </div>
+        <Pager page={invoicesPage} pageCount={invoicesPageCount} totalCount={filteredInvoices.length} onPageChange={setInvoicesPage} itemLabel="فاتورة" />
       </div>
 
       {/* Create Sales Invoice Modal */}

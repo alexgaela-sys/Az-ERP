@@ -13,6 +13,8 @@ import { MasterDataService } from '../../services/masterData';
 import { LedgerService } from '../../services/ledger';
 import { channelForCustomerType, currencyForCustomerType } from '../../services/pricing';
 import { printDocument } from '../printUtils';
+import { usePagination } from '../usePagination';
+import { Pager } from '../ui';
 
 export const CustomersView: React.FC = () => {
   const db = erpDb.getSnapshot();
@@ -311,11 +313,13 @@ export const CustomersView: React.FC = () => {
     setWhInvoiceId('');
   };
 
-  // Filtered customer list
-  const filteredCustomers = db.customers.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  // Filtered customer list (Fix 1, speed-fix list: memoized so a re-render
+  // that doesn't touch customers/searchQuery doesn't re-filter)
+  const filteredCustomers = useMemo(() => db.customers.filter(c =>
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.code.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ), [db.customers, searchQuery]);
+  const { pageItems: pagedCustomers, page: customersPage, setPage: setCustomersPage, pageCount: customersPageCount } = usePagination(filteredCustomers, 50);
 
   // Selected customer for Statement
   const selectedCustomer = db.customers.find(c => c.id === statementCustomerId);
@@ -556,7 +560,7 @@ export const CustomersView: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map(cust => {
+                  pagedCustomers.map(cust => {
                     const isOverLimit = cust.creditLimit > 0 && cust.currentBalance > cust.creditLimit;
                     return (
                       <tr key={cust.id} className="hover:bg-slate-50/80 transition">
@@ -626,6 +630,7 @@ export const CustomersView: React.FC = () => {
                 )}
               </tbody>
             </table>
+            <Pager page={customersPage} pageCount={customersPageCount} totalCount={filteredCustomers.length} onPageChange={setCustomersPage} itemLabel="عميل" />
           </div>
         </div>
       )}

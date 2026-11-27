@@ -8,12 +8,18 @@ import { erpDb } from '../../services/db';
 import { AccountingEngine } from '../../services/accounting';
 import { JournalEntry, Account, AccountingPeriod, isDebitNatureCategory } from '../../types/erp';
 import { printDocument } from '../printUtils';
+import { usePagination } from '../usePagination';
+import { Pager } from '../ui';
 
 export const AccountingView: React.FC = () => {
   const db = erpDb.getSnapshot();
   const [activeTab, setActiveTab] = useState<'journals' | 'ledger' | 'chart' | 'periods'>('journals');
   const [showAddJvModal, setShowAddJvModal] = useState(false);
   const [selectedJvDetails, setSelectedJvDetails] = useState<JournalEntry | null>(null);
+
+  // Fix 1 (speed-fix list): journal entries, newest-first, memoized + paged.
+  const reversedJournalEntries = useMemo(() => db.journalEntries.slice().reverse(), [db.journalEntries]);
+  const { pageItems: pagedJournalEntries, page: journalsPage, setPage: setJournalsPage, pageCount: journalsPageCount } = usePagination(reversedJournalEntries, 50);
 
   // General Ledger Filters (Requirement 6)
   const nonHeaderAccounts = useMemo(() => db.accounts.filter(a => !a.isHeader), [db.accounts]);
@@ -372,7 +378,7 @@ export const AccountingView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                db.journalEntries.slice().reverse().map(jv => (
+                pagedJournalEntries.map(jv => (
                   <tr key={jv.id} className={`hover:bg-slate-50 transition ${jv.isReversed ? 'bg-rose-50/40 text-slate-400' : ''}`}>
                     <td className="p-3.5 font-mono font-bold text-slate-900">{jv.entryNumber}</td>
                     <td className="p-3.5 text-slate-600">{jv.date}</td>
@@ -423,6 +429,7 @@ export const AccountingView: React.FC = () => {
               )}
             </tbody>
           </table>
+          <Pager page={journalsPage} pageCount={journalsPageCount} totalCount={reversedJournalEntries.length} onPageChange={setJournalsPage} itemLabel="قيد" />
         </div>
       )}
 
