@@ -7,7 +7,43 @@ import { erpDb, CLOUD_STORAGE_MODE } from '../../../services/db';
 import { CompanySettingsService } from '../../../services/companySettings';
 import { SectionCard } from '../../ui';
 
-const MAX_LOGO_BYTES = 300 * 1024;
+// Fix 7 (speed-fix list): the logo travels with every full snapshot and
+// every offline-cache write, so it's resized + re-encoded before it's ever
+// stored — not just capped by raw upload size.
+const MAX_LOGO_UPLOAD_BYTES = 2 * 1024 * 1024; // reject originals over 2MB outright
+const LOGO_MAX_WIDTH = 256;
+const LOGO_QUALITY = 0.8;
+
+/** Resize `file` to at most LOGO_MAX_WIDTH wide (same aspect ratio, never
+ * upscaled) and re-encode as WebP (falls back to JPEG if the browser can't
+ * produce WebP), returning a data URL. */
+function resizeLogoToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const scale = Math.min(1, LOGO_MAX_WIDTH / img.width);
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('canvas unavailable')); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      let dataUrl = canvas.toDataURL('image/webp', LOGO_QUALITY);
+      // Some browsers silently return a PNG data URL when WebP encoding
+      // isn't supported — fall back to JPEG in that case.
+      if (!dataUrl.startsWith('data:image/webp')) {
+        dataUrl = canvas.toDataURL('image/jpeg', LOGO_QUALITY);
+      }
+      resolve(dataUrl);
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('invalid image')); };
+    img.src = objectUrl;
+  });
+}
 
 export const CompanySettingsSection: React.FC = () => {
   const company = erpDb.getSnapshot().company;
@@ -36,20 +72,22 @@ export const CompanySettingsSection: React.FC = () => {
 
   const handleLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       setMessage({ tone: 'error', text: 'الملف المختار ليس صورة' });
       return;
     }
-    if (file.size > MAX_LOGO_BYTES) {
-      setMessage({ tone: 'error', text: 'حجم الشعار أكبر من 300 كيلوبايت — اختر صورة أصغر' });
+    if (file.size > MAX_LOGO_UPLOAD_BYTES) {
+      setMessage({ tone: 'error', text: 'حجم الشعار أكبر من 2 ميجابايت — اختر صورة أصغر' });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => set('logoDataUrl', String(reader.result || ''));
-    reader.onerror = () => setMessage({ tone: 'error', text: 'تعذّرت قراءة ملف الشعار' });
-    reader.readAsDataURL(file);
-    e.target.value = '';
+    // Existing saved logos (already stored as a data URL from before this
+    // fix) are left exactly as they are — only a newly-chosen file goes
+    // through the resize/re-encode step below.
+    resizeLogoToDataUrl(file)
+      .then(dataUrl => set('logoDataUrl', dataUrl))
+      .catch(() => setMessage({ tone: 'error', text: 'تعذّرت معالجة ملف الشعار' }));
   };
 
   const handleSave = () => {
