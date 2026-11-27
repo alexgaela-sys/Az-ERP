@@ -121,15 +121,43 @@ function movementLink(movementType: string, docNumber: string): ItemCardRow['lin
   }
 }
 
+/**
+ * Fix 2 (speed-fix list): a per-snapshot index of db.batches by itemId, so
+ * getItemBalance/getItemValue/getItemBatches don't each re-scan the whole
+ * batches array. Rebuilt lazily, once, whenever erpDb's version changes
+ * (erpDb.getVersion() — see db.ts), and reused by every call until then.
+ */
+let batchIndexVersion = -1;
+let batchIndexByItem: Map<string, Batch[]> = new Map();
+
+function getBatchIndex(): Map<string, Batch[]> {
+  const v = erpDb.getVersion();
+  if (v !== batchIndexVersion) {
+    const db = erpDb.getSnapshot();
+    const idx = new Map<string, Batch[]>();
+    for (const b of db.batches) {
+      const arr = idx.get(b.itemId);
+      if (arr) arr.push(b);
+      else idx.set(b.itemId, [b]);
+    }
+    batchIndexByItem = idx;
+    batchIndexVersion = v;
+  }
+  return batchIndexByItem;
+}
+
 export class InventoryEngine {
   /**
    * Get current stock of an item in a specific warehouse (or across all warehouses)
    */
   public static getItemBalance(itemId: string, warehouseId?: string): number {
-    const db = erpDb.getSnapshot();
-    return db.batches
-      .filter(b => b.itemId === itemId && (!warehouseId || b.warehouseId === warehouseId))
-      .reduce((sum, b) => sum + (b.quantity || 0), 0);
+    const batches = getBatchIndex().get(itemId);
+    if (!batches) return 0;
+    let sum = 0;
+    for (const b of batches) {
+      if (!warehouseId || b.warehouseId === warehouseId) sum += (b.quantity || 0);
+    }
+    return sum;
   }
 
   /**
@@ -137,19 +165,23 @@ export class InventoryEngine {
    * Valuation uses the actual batch costs (FIFO layers), never a stale standard cost.
    */
   public static getItemValue(itemId: string, warehouseId?: string): number {
-    const db = erpDb.getSnapshot();
-    return db.batches
-      .filter(b => b.itemId === itemId && (!warehouseId || b.warehouseId === warehouseId))
-      .reduce((sum, b) => sum + (b.quantity || 0) * (b.unitCost || 0), 0);
+    const batches = getBatchIndex().get(itemId);
+    if (!batches) return 0;
+    let sum = 0;
+    for (const b of batches) {
+      if (!warehouseId || b.warehouseId === warehouseId) sum += (b.quantity || 0) * (b.unitCost || 0);
+    }
+    return sum;
   }
 
   /**
    * Get all active batches for an item in a specific warehouse (FIFO order: production date, then receipt)
    */
   public static getItemBatches(itemId: string, warehouseId?: string): Batch[] {
-    const db = erpDb.getSnapshot();
-    return db.batches
-      .filter(b => b.itemId === itemId && (!warehouseId || b.warehouseId === warehouseId) && b.quantity > 0)
+    const batches = getBatchIndex().get(itemId);
+    if (!batches) return [];
+    return batches
+      .filter(b => (!warehouseId || b.warehouseId === warehouseId) && b.quantity > 0)
       .sort((a, b) => {
         const d = (a.productionDate || '').localeCompare(b.productionDate || '');
         if (d !== 0) return d;

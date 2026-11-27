@@ -1835,6 +1835,20 @@ class ERPDatabaseService {
   private listeners: Set<() => void> = new Set();
   /** set once a cloud store is attached; from then on edits go there, not to localStorage */
   private cloud: CloudSync | null = null;
+  /**
+   * Monotonically increasing counter, bumped on every notify()/emit() (i.e.
+   * every local mutation and every applied remote cloud change). `this.db`
+   * itself is mutated in place and its reference never changes, so this
+   * counter is the only reliable "has the data changed" signal callers can
+   * use to invalidate a derived-data cache (see InventoryEngine's per-
+   * snapshot stock index, Fix 2 of the speed-fix list).
+   */
+  private version = 0;
+
+  /** Current data version. Bumps on every mutation/remote-applied change. */
+  public getVersion(): number {
+    return this.version;
+  }
 
   constructor() {
     this.db = this.load();
@@ -1895,6 +1909,7 @@ class ERPDatabaseService {
   }
 
   private notify() {
+    this.version++;
     if (this.cloud) this.cloud.markDirty();
     else this.saveToStorage(this.db);
     this.listeners.forEach((listener) => {
@@ -1941,6 +1956,7 @@ class ERPDatabaseService {
 
   /** Tell subscribers the data changed without saving it (used for server-driven updates). */
   private emit() {
+    this.version++;
     this.listeners.forEach((listener) => {
       try {
         listener();

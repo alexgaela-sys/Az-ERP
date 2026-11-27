@@ -83,10 +83,24 @@ export const InventoryView: React.FC<{
     batchesCount: number;
   }> = [];
 
+  // Fix 2 (speed-fix list): one pass over db.batches to group by
+  // itemId+warehouseId, instead of re-scanning the whole batches array for
+  // every (item, warehouse) combination below. Same filter (quantity > 0),
+  // same iteration order (item-major, warehouse-minor) and same math as
+  // before — only how the batches for each combo are found has changed.
+  const positiveBatchesByItemWh = new Map<string, typeof db.batches>();
+  db.batches.forEach(b => {
+    if (b.quantity <= 0) return;
+    const key = `${b.itemId}|${b.warehouseId}`;
+    const arr = positiveBatchesByItemWh.get(key);
+    if (arr) arr.push(b);
+    else positiveBatchesByItemWh.set(key, [b]);
+  });
+
   items.forEach(item => {
     allowedWarehouses.forEach(wh => {
       if (selectedWarehouseId !== 'all' && wh.id !== selectedWarehouseId) return;
-      const batches = db.batches.filter(b => b.itemId === item.id && b.warehouseId === wh.id && b.quantity > 0);
+      const batches = positiveBatchesByItemWh.get(`${item.id}|${wh.id}`) || [];
       const qty = batches.reduce((sum, b) => sum + b.quantity, 0);
       if (qty > 0) {
         const avgCost = batches.length > 0 ? batches.reduce((s, b) => s + (b.quantity * b.unitCost), 0) / qty : (item.standardCost || 0);
