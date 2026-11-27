@@ -24,6 +24,7 @@ import { erpDb, generateErpId } from '../../services/db';
 import { AuthService } from '../../services/auth';
 import { buildOwnerUser, resolveCloudIdentity } from '../../services/cloud/cloudIdentity';
 import { SyncBadge } from './SyncBadge';
+import { Skeleton } from '../ui';
 
 type Phase = 'config' | 'signin' | 'connecting' | 'setup' | 'importing' | 'ready' | 'fatal' | 'noaccess';
 
@@ -432,7 +433,7 @@ export const CloudGate: React.FC<{ children: React.ReactNode }> = ({ children })
   if (phase === 'connecting') {
     return (
       <Shell title="جاري تحميل بيانات الشركة…">
-        <p className="text-sm text-center text-cream-800">لحظات من فضلك</p>
+        <Skeleton rows={5} />
       </Shell>
     );
   }

@@ -161,3 +161,30 @@ export const Pager: React.FC<{
     </div>
   );
 };
+
+/* ============================================================
+   Skeleton — speed-fix list, Fix 5. A lightweight loading placeholder (gray
+   animated blocks shaped like a table) so the user sees structure instead of
+   a blank page or a lone line of text. Used as the Suspense fallback for
+   lazy-loaded module screens (Fix 4) and from CloudGate's 'connecting'
+   phase. Arabic RTL, no new dependencies — plain CSS animation.
+   ============================================================ */
+
+export const Skeleton: React.FC<{ rows?: number }> = ({ rows = 8 }) => (
+  <div className="space-y-4" dir="rtl" aria-busy="true" aria-label="جاري التحميل">
+    <div className="h-8 w-48 rounded-lg bg-cream-200 animate-pulse" />
+    <div className="bg-white rounded-2xl border border-cream-200 overflow-hidden">
+      <div className="h-10 bg-cream-100 animate-pulse" />
+      <div className="divide-y divide-cream-100">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="h-11 flex items-center gap-4 px-4">
+            <div className="h-3.5 flex-[2] rounded bg-cream-200 animate-pulse" />
+            <div className="h-3.5 flex-[3] rounded bg-cream-200 animate-pulse" />
+            <div className="h-3.5 flex-1 rounded bg-cream-200 animate-pulse" />
+            <div className="h-3.5 flex-1 rounded bg-cream-200 animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
