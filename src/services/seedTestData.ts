@@ -1432,5 +1432,149 @@ export class TestDataService {
 
     return results;
   }
+
+  /**
+   * DEV-ONLY load-test seed. Not wired to any UI button and never called
+   * automatically — it exists so a developer can open the browser console
+   * and run:
+   *   import('/src/services/seedTestData.ts').then(m => m.TestDataService.generateLoadTestSeed())
+   * (or call it from a temporary dev button) against a LOCAL build only,
+   * to reproduce the Step-0 performance measurements in speed-rules.md /
+   * the speed-fix list. It writes synthetic rows directly into the erpDb
+   * snapshot — it does NOT run through WorkflowService, so these invoices
+   * are NOT accounting-correct and must never be seeded against a real
+   * company database. Every row is isTest: true so "Clear test data only"
+   * (Settings) removes all of it afterwards.
+   *
+   * Defaults match the sizing requested for Step 0: 2,000 items, 20,000
+   * batches, 5,000 sales invoices (each with 1-3 lines).
+   */
+  public static generateLoadTestSeed(opts?: { itemCount?: number; batchCount?: number; invoiceCount?: number }): { itemCount: number; batchCount: number; invoiceCount: number; lineCount: number; durationMs: number } {
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const itemCount = opts?.itemCount ?? 2000;
+    const batchCount = opts?.batchCount ?? 20000;
+    const invoiceCount = opts?.invoiceCount ?? 5000;
+    let lineCount = 0;
+
+    erpDb.mutate(draft => {
+      const unitId = draft.units?.[0]?.id || 'unit-pc';
+      const warehouseIds = draft.warehouses.map(w => w.id);
+      const whFg = warehouseIds.find(id => id.includes('local') || id.includes('fg')) || warehouseIds[0] || 'wh-raw';
+
+      const newItems: Item[] = [];
+      for (let i = 0; i < itemCount; i++) {
+        newItems.push({
+          id: `test-item-load-${i}`,
+          code: `LT-${String(i).padStart(5, '0')}`,
+          nameAr: `صنف اختبار الحمل ${i}`,
+          nameEn: `Load Test Item ${i}`,
+          itemType: 'finished_product',
+          baseUnitId: unitId,
+          vatRate: 0.14,
+          vatCategory: 'standard',
+          trackBatch: true,
+          trackExpiry: false,
+          standardCost: 50,
+          actualCost: 50,
+          sellingPriceRetail: 100,
+          sellingPriceWholesale: 90,
+          sellingPriceExportUSD: 5,
+          active: true,
+          minStockLevel: 0,
+          isTest: true,
+        });
+      }
+      draft.items.push(...newItems);
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      for (let b = 0; b < batchCount; b++) {
+        const itm = newItems[b % itemCount];
+        draft.batches.push({
+          id: `test-batch-load-${b}`,
+          batchNumber: `LT-BAT-${b}`,
+          itemId: itm.id,
+          warehouseId: whFg,
+          productionDate: todayStr,
+          expiryDate: '',
+          quantity: 10,
+          unitCost: 50,
+          isTest: true,
+        });
+      }
+
+      let custId = draft.customers.find(c => c.active)?.id || draft.customers[0]?.id;
+      if (!custId) {
+        custId = 'test-cust-load-1';
+        draft.customers.push({
+          id: custId,
+          code: 'LT-CUST-1',
+          name: 'عميل اختبار الحمل',
+          customerType: 'wholesale',
+          channel: 'wholesale',
+          address: '',
+          phone: '',
+          currency: 'EGP',
+          creditLimit: 1000000,
+          currentBalance: 0,
+          openingBalance: 0,
+          active: true,
+          isTest: true,
+        });
+      }
+      for (let v = 0; v < invoiceCount; v++) {
+        const invId = `test-inv-load-${v}`;
+        const lines: typeof draft.salesInvoiceLines = [];
+        const numLines = 1 + (v % 3);
+        let subtotal = 0, vatAmount = 0;
+        for (let li = 0; li < numLines; li++) {
+          const itm = newItems[(v + li) % itemCount];
+          const qty = 1 + (li % 5);
+          const totalBeforeVat = qty * itm.sellingPriceRetail;
+          const lineVat = totalBeforeVat * itm.vatRate;
+          subtotal += totalBeforeVat;
+          vatAmount += lineVat;
+          lines.push({
+            id: `test-invl-load-${v}-${li}`,
+            invoiceId: invId,
+            itemId: itm.id,
+            quantity: qty,
+            freeQuantity: 0,
+            unitPrice: itm.sellingPriceRetail,
+            unitCost: itm.standardCost,
+            discount: 0,
+            vatRate: itm.vatRate,
+            vatAmount: lineVat,
+            totalBeforeVat,
+            netTotal: totalBeforeVat + lineVat,
+            isTest: true,
+          } as any);
+        }
+        draft.salesInvoiceLines.push(...lines);
+        draft.salesInvoices.push({
+          id: invId,
+          invoiceNumber: `LT-${v}`,
+          date: todayStr,
+          customerId: custId,
+          channel: 'wholesale',
+          warehouseId: whFg,
+          paymentMethod: 'cash',
+          currency: 'EGP',
+          exchangeRate: 1,
+          subtotal,
+          discountAmount: 0,
+          vatAmount,
+          totalAmount: subtotal + vatAmount,
+          totalAmountEGP: subtotal + vatAmount,
+          cogsTotal: 0,
+          status: 'posted',
+          isTest: true,
+        } as any);
+        lineCount += numLines;
+      }
+    });
+
+    const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
+    return { itemCount, batchCount, invoiceCount, lineCount, durationMs };
+  }
 }
 
