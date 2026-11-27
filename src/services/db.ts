@@ -13,7 +13,7 @@ import {
   isDebitNatureCategory
 } from '../types/erp';
 import { CloudSync, SyncHost } from './cloud/syncEngine';
-import { readOfflineCache } from './cloud/offlineCache';
+import { readOfflineCache, type OfflineCache } from './cloud/offlineCache';
 
 // -----------------------------------------------------------------------------
 // Deterministic Document Numbering & ID Generation (Centralized, Collision-free)
@@ -1855,22 +1855,16 @@ class ERPDatabaseService {
   }
 
   private load(): ERPDatabaseSchema {
-    // Cloud build: normally start blank and untouched — the real data arrives
-    // from the server a moment later. But if THIS device has synced before
-    // and has an offline cache (see services/cloud/offlineCache.ts), start
-    // from that instead: it lets the app render real data (and the Cashier
-    // screen keep working) immediately even if there is no network at all
-    // right now. Any collection the cache predates still gets its normal
-    // empty seed from createEmptyDatabase() underneath it.
+    // Cloud build: always start blank and untouched here — the real data
+    // arrives from the server a moment later, OR (Fix 6, speed-fix list)
+    // from hydrateFromOfflineCache() below, called from CloudGate's async
+    // connect() flow before the sync engine starts. The offline cache now
+    // lives in IndexedDB, which has no synchronous read API, so it can no
+    // longer be read inside this constructor — the app already shows a
+    // loading skeleton (Fix 5) for the brief moment until hydration (cached
+    // or live) completes, exactly as it did before while waiting on the
+    // network.
     if (CLOUD_STORAGE_MODE) {
-      const cached = readOfflineCache();
-      if (cached) {
-        try {
-          return { ...createEmptyDatabase(), ...cached.db } as ERPDatabaseSchema;
-        } catch (e) {
-          console.error('Could not use the offline cloud cache, starting blank:', e);
-        }
-      }
       return createEmptyDatabase();
     }
     try {
@@ -2090,6 +2084,29 @@ class ERPDatabaseService {
   public restore(newData: ERPDatabaseSchema) {
     this.db = newData;
     this.notify();
+  }
+
+  /** Fix 6 (speed-fix list): cloud build only. Reads the IndexedDB offline
+   * cache (async — see services/cloud/offlineCache.ts) and, if this device
+   * has one, replaces the current (empty) database with it so the app can
+   * render real data immediately even with no network. Must be called
+   * before the sync engine starts (CloudGate's connect(), before
+   * rt.sync.connect()) so the cached data and the sync engine's resume
+   * position are primed together. Returns the cache (so the caller can
+   * also prime CloudSync's position) or null if there was none / it
+   * couldn't be read. Any collection the cache predates still gets its
+   * normal empty seed from createEmptyDatabase() underneath it — identical
+   * merge to the old synchronous constructor-time behavior. */
+  public async hydrateFromOfflineCache(): Promise<OfflineCache | null> {
+    try {
+      const cached = await readOfflineCache();
+      if (!cached) return null;
+      this.restore({ ...createEmptyDatabase(), ...cached.db } as ERPDatabaseSchema);
+      return cached;
+    } catch (e) {
+      console.error('Could not use the offline cloud cache, starting blank:', e);
+      return null;
+    }
   }
 }
 

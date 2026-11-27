@@ -18,7 +18,7 @@ import {
   readLegacyLocalDatabase,
 } from '../../services/db';
 import { RemoteRejectedError, RemoteUnavailableError } from '../../services/cloud/remoteStore';
-import { getCloudRuntime } from './cloudRuntime';
+import { getCloudRuntime, hydrateOfflineCache } from './cloudRuntime';
 import { clearOfflineCache } from '../../services/cloud/offlineCache';
 import { erpDb, generateErpId } from '../../services/db';
 import { AuthService } from '../../services/auth';
@@ -329,6 +329,13 @@ export const CloudGate: React.FC<{ children: React.ReactNode }> = ({ children })
     setPhase('connecting');
     setMessage('');
     try {
+      // Fix 6 (speed-fix list): hydrate from this device's IndexedDB offline
+      // cache (if any) BEFORE the sync engine connects, so cached data and
+      // the sync position are primed together and the sync engine never
+      // starts from a half-empty database. A device with no cache yet (or
+      // whose read fails) simply gets `false` here and connects exactly as
+      // before this fix — straight from an empty database, waiting on rt.sync.connect() below.
+      await hydrateOfflineCache(rt);
       const { empty } = await rt.sync.connect();
       if (empty) {
         // "empty" only means this account can read nothing. Only an admin may start
@@ -406,7 +413,7 @@ export const CloudGate: React.FC<{ children: React.ReactNode }> = ({ children })
       rt.sync.stop();
       await rt.auth.signOut();
     }
-    clearOfflineCache();
+    await clearOfflineCache();
     window.location.reload();
   };
 

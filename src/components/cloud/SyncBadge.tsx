@@ -4,6 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { CloudSync, SyncStatus } from '../../services/cloud/syncEngine';
+import { subscribeOfflineCacheWriteFailure } from '../../services/cloud/offlineCache';
 
 const REASON_AR: Record<string, string> = {
   stale: 'تم تعديله من جهاز آخر',
@@ -31,6 +32,14 @@ interface Props {
 export const SyncBadge: React.FC<Props> = ({ sync, email, onSignOut, onRelogin }) => {
   const status = useSyncStatus(sync);
   const [open, setOpen] = useState(false);
+  // Fix 6 (speed-fix list): a failed offline-cache write (IndexedDB quota,
+  // private browsing, unavailable, ...) used to fail completely silently.
+  // Sticky for the rest of this page load once it happens once — the
+  // device's offline-resume safety net is stale/off, and staying stale is
+  // exactly the fact worth warning about even if a later write happens to
+  // succeed.
+  const [offlineCacheWarning, setOfflineCacheWarning] = useState(false);
+  useEffect(() => subscribeOfflineCacheWriteFailure(() => setOfflineCacheWarning(true)), []);
 
   // warn before closing the tab while edits are not saved yet
   useEffect(() => {
@@ -92,11 +101,23 @@ export const SyncBadge: React.FC<Props> = ({ sync, email, onSignOut, onRelogin }
         >
           <span className="inline-block w-2 h-2 rounded-full bg-current opacity-80" />
           {label}
+          {offlineCacheWarning && (
+            <span
+              className="inline-block w-2 h-2 rounded-full bg-amber-500"
+              title="تعذّر حفظ النسخة الاحتياطية دون اتصال على هذا الجهاز"
+            />
+          )}
         </button>
 
         {open && (
           <div className="mt-2 w-72 rounded-xl border border-cream-300 bg-white p-3 shadow-lg text-xs text-ink-800 space-y-2">
             {email && <p className="font-bold break-all">{email}</p>}
+            {offlineCacheWarning && (
+              <p className="leading-5 font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                تعذّر حفظ نسخة العمل دون اتصال على هذا الجهاز (المساحة ممتلئة أو المتصفح يمنعها).
+                التطبيق لا يزال يعمل، لكن لو انقطع الاتصال فجأة فهذا الجهاز قد لا يستطيع إكمال العمل دون إنترنت.
+              </p>
+            )}
             {status.message && <p className="leading-5">{status.message}</p>}
             {status.lastSavedAt && (
               <p className="text-cream-700">آخر حفظ: {new Date(status.lastSavedAt).toLocaleTimeString('ar-EG')}</p>

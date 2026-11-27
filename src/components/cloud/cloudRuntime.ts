@@ -9,7 +9,7 @@ import {
   SupabaseConfig,
   SupabaseHttpStore,
 } from '../../services/cloud/supabaseHttpStore';
-import { readOfflineCache, writeOfflineCache } from '../../services/cloud/offlineCache';
+import { writeOfflineCache } from '../../services/cloud/offlineCache';
 
 export interface CloudRuntime {
   cfg: SupabaseConfig;
@@ -32,14 +32,16 @@ export function getCloudRuntime(): CloudRuntime | null {
   const store = new SupabaseHttpStore(cfg, auth);
   const sync = erpDb.attachCloud(store);
 
-  // Resume incrementally (never a destructive full reload) if this device
-  // has a cached sync position — see services/cloud/offlineCache.ts and
-  // CloudSync.primeFromCache()/connect() in services/cloud/syncEngine.ts.
-  const cached = readOfflineCache();
-  if (cached) sync.primeFromCache({ versions: cached.versions, shadow: cached.shadow, cursor: cached.cursor });
+  // Fix 6 (speed-fix list): the offline cache now lives in IndexedDB, which
+  // has no synchronous read API, so priming the sync engine's resume
+  // position from it can no longer happen here (this function is called
+  // synchronously, before React even renders). It instead happens in
+  // hydrateOfflineCache() below, awaited from CloudGate's connect() — the
+  // same async flow that already waits on the network — right before
+  // rt.sync.connect() runs.
 
   // Keep that cache up to date: after every local edit and every server
-  // round-trip, mirror the live database + sync position to localStorage,
+  // round-trip, mirror the live database + sync position to IndexedDB,
   // debounced so a burst of edits (e.g. posting an invoice) writes once.
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
   const schedulePersist = () => {
@@ -47,7 +49,7 @@ export function getCloudRuntime(): CloudRuntime | null {
     persistTimer = setTimeout(() => {
       persistTimer = null;
       const pos = sync.exportPosition();
-      writeOfflineCache({
+      void writeOfflineCache({
         db: erpDb.getSnapshot() as unknown as Record<string, any>,
         versions: pos.versions,
         shadow: pos.shadow,
@@ -61,4 +63,19 @@ export function getCloudRuntime(): CloudRuntime | null {
 
   runtime = { cfg, auth, sync, store };
   return runtime;
+}
+
+/** Fix 6 (speed-fix list): must be awaited once, before rt.sync.connect(),
+ * from CloudGate's connect() flow. Hydrates erpDb from this device's
+ * IndexedDB offline cache (if any) and primes the sync engine's resume
+ * position from the SAME cache read, so the database contents and the
+ * sync position never drift apart. Returns true if a cache was found and
+ * applied, false otherwise (first-ever login on this device, or no usable
+ * cache) — in which case erpDb stays empty and waits on the network exactly
+ * as before this fix. */
+export async function hydrateOfflineCache(rt: CloudRuntime): Promise<boolean> {
+  const cached = await erpDb.hydrateFromOfflineCache();
+  if (!cached) return false;
+  rt.sync.primeFromCache({ versions: cached.versions, shadow: cached.shadow, cursor: cached.cursor });
+  return true;
 }
