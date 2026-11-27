@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   BarChart3, FileSpreadsheet, Printer, Download, 
   Calendar, Filter, PieChart, TrendingUp, Layers
@@ -173,31 +173,63 @@ export const ReportsView: React.FC<{
 
   const accounts = db.accounts.filter(a => !a.isHeader);
 
+  // Fix 3 (speed-fix list): every report below used to scan ALL posted
+  // journal entries × ALL their lines once per account — for trialBalanceData
+  // directly, and again inside signedBalance() for every other statement
+  // (income statement, balance sheet, ...), on every single render of this
+  // screen (which re-renders on ANY change anywhere in the whole app while
+  // the Reports tab is open — a sale posted on another screen, a sync poll
+  // applying a remote change, anything). With enough journal history this
+  // is genuinine, repeated main-thread-blocking work, visible as stutter
+  // across the whole page (including the fixed sidebar, which never
+  // actually re-renders itself — it just can't get a frame in while this is
+  // running).
+  //
+  // One pass over db.journalEntries builds a per-account index once (memoized
+  // on the entries themselves), so every account's debit/credit lookup below
+  // becomes O(lines for that one account) instead of O(all entries × all
+  // lines) repeated per account, per statement.
+  const postedLinesByAccount = useMemo(() => {
+    const map = new Map<string, Array<{ debit: number; credit: number; date: string }>>();
+    db.journalEntries.forEach(jv => {
+      if (!jv.isPosted) return;
+      jv.lines.forEach(l => {
+        const entry = { debit: l.debit, credit: l.credit, date: jv.date };
+        const arr = map.get(l.accountId);
+        if (arr) arr.push(entry); else map.set(l.accountId, [entry]);
+      });
+    });
+    return map;
+  }, [db.journalEntries]);
+
   /** Signed balance (nature-aware) of an account over the selected period. Never clamped. */
   const signedBalance = (acc: { id: string; category: string }, periodOnly: boolean) => {
     let debit = 0;
     let credit = 0;
-    db.journalEntries.filter(j => j.isPosted && (!periodOnly || inPeriod(j.date))).forEach(jv => {
-      jv.lines.filter(l => l.accountId === acc.id).forEach(l => {
+    const lines = postedLinesByAccount.get(acc.id);
+    if (lines) {
+      for (const l of lines) {
+        if (periodOnly && !inPeriod(l.date)) continue;
         debit += l.debit;
         credit += l.credit;
-      });
-    });
+      }
+    }
     return isDebitNatureCategory(acc.category as any) ? (debit - credit) : (credit - debit);
   };
 
   // 1. Trial Balance calculation — every movement, plus the SIGNED closing balance so
   //    abnormal (negative) balances stay visible instead of being clamped to zero.
-  const trialBalanceData = accounts.map(acc => {
+  const trialBalanceData = useMemo(() => accounts.map(acc => {
     let totalDebit = 0;
     let totalCredit = 0;
 
-    db.journalEntries.filter(j => j.isPosted).forEach(jv => {
-      jv.lines.filter(l => l.accountId === acc.id).forEach(l => {
+    const lines = postedLinesByAccount.get(acc.id);
+    if (lines) {
+      for (const l of lines) {
         totalDebit += l.debit;
         totalCredit += l.credit;
-      });
-    });
+      }
+    }
 
     const isDebitNature = isDebitNatureCategory(acc.category);
     // Raw balance: > 0 = debit balance, < 0 = credit balance (what رصيد مدين / رصيد دائن mean).
@@ -219,7 +251,9 @@ export const ReportsView: React.FC<{
       closingCredit: rawBalance < 0 ? -rawBalance : 0,
       abnormal: net < 0,
     };
-  }).filter(r => Math.abs(r.totalDebit) > 0.005 || Math.abs(r.totalCredit) > 0.005 || Math.abs(r.net) > 0.005);
+  }).filter(r => Math.abs(r.totalDebit) > 0.005 || Math.abs(r.totalCredit) > 0.005 || Math.abs(r.net) > 0.005),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [accounts, postedLinesByAccount]);
 
   const tbTotalDebitMoves = trialBalanceData.reduce((s, r) => s + r.totalDebit, 0);
   const tbTotalCreditMoves = trialBalanceData.reduce((s, r) => s + r.totalCredit, 0);
